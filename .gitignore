@@ -1,0 +1,10 @@
+# シークレット(絶対にコミットしない)
+.env
+gas/SetupLocal.gs
+
+# ローカル作業ファイル
+node_modules/
+*.zip
+shot_*.png
+package.json
+package-lock.json
