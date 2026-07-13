@@ -42,6 +42,7 @@ function doGet(e) {
     digest: digest ? {
       date: digest.date, title: digest.title, body: digest.body,
       count: digest.count, events: digest.events, answers: digest.answers,
+      marketLines: digest.marketLines || [],
     } : null,
     items: items.map(toApiItem),
     generated: new Date().toISOString(),

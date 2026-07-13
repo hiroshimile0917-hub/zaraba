@@ -33,6 +33,18 @@ const US_CPI_2026 = [
   '2026-09-11', '2026-10-14', '2026-11-10', '2026-12-10',
 ];
 
+// 日銀短観(2026年後半・日程は目安。日銀の公表予定で確定次第更新)
+const TANKAN_2026 = [
+  { date: '2026-10-01', label: '日銀短観(9月調査)公表 ※日程は目安' },
+  { date: '2026-12-14', label: '日銀短観(12月調査)公表 ※日程は目安' },
+];
+
+// GDP1次速報(2026年後半・約45日後ルールの目安。内閣府の公表予定で確定次第更新)
+const JP_GDP_2026 = [
+  { date: '2026-08-17', label: 'GDP1次速報(4-6月期) ※日程は目安' },
+  { date: '2026-11-16', label: 'GDP1次速報(7-9月期) ※日程は目安' },
+];
+
 /** 本日のイベント一覧 @return {Array<{type,label}>} */
 function getTodayEvents(now) {
   const ymd = fmtYmd(now);
@@ -62,6 +74,19 @@ function getTodayEvents(now) {
     if (d === ymd) events.push({ type: 'cpi', label: '米消費者物価指数(CPI)発表(日本時間 今夜)' });
   }
 
+  // 全国CPI(総務省ルール: 毎月19日を含む週の金曜 8:30 公表)
+  if (jpCpiDateOfMonth(now.getFullYear(), now.getMonth() + 1) === ymd) {
+    events.push({ type: 'jp', label: '全国消費者物価指数(CPI)発表(8:30)' });
+  }
+
+  // 日銀短観・GDP速報(目安日程)
+  for (const ev of TANKAN_2026) {
+    if (ev.date === ymd) events.push({ type: 'jp', label: ev.label });
+  }
+  for (const ev of JP_GDP_2026) {
+    if (ev.date === ymd) events.push({ type: 'jp', label: ev.label });
+  }
+
   // 決算発表予定(J-Quants優先、なければJPX Excel週次取り込み分)
   let earnings = null;
   try { earnings = jqAnnouncementByDate(ymd); } catch (e) { earnings = null; }
@@ -73,6 +98,15 @@ function getTodayEvents(now) {
   }
 
   return events;
+}
+
+/** 全国CPIの公表日(毎月19日を含む週の金曜)を yyyy-MM-dd で返す(純粋関数・テスト対象) */
+function jpCpiDateOfMonth(year, month) {
+  const d19 = new Date(year, month - 1, 19);
+  const friday = 19 + (5 - d19.getDay()); // 週=日曜始まり。19日が土曜(6)なら前日の金曜18日
+  const mm = String(month).padStart(2, '0');
+  const dd = String(friday).padStart(2, '0');
+  return `${year}-${mm}-${dd}`;
 }
 
 /** その月のSQ日(第2金曜)を yyyy-MM-dd で返す(純粋関数・テスト対象) */

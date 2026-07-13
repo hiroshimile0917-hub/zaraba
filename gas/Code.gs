@@ -20,7 +20,7 @@
 
 // ================= 設定 =================
 const CONFIG = {
-  GEMINI_MODEL: 'gemini-flash-latest',
+  GEMINI_MODEL: 'gemini-2.5-flash',
   PATROL_START_HOUR: 8,       // TDnet巡回開始(時)
   PATROL_END_HOUR: 19,        // TDnet巡回終了(時)。引け後の開示(〜18時台)も保存・配信する
   MAX_ALERTS_PER_RUN: 5,      // 1回の巡回で配信する最大件数
@@ -67,12 +67,22 @@ const EXCLUDE_KEYWORDS = [
 /** 朝刊ダイジェスト(時間トリガー: 8時台 / または cron-job.org → doGet?action=morning) */
 function morningDigest() {
   const now = new Date();
-  if (!isBusinessDayJP(now)) return; // 土日祝はスキップ
+  const day = now.getDay();
+  if (day === 0 || day === 6) return; // 土日スキップ
 
-  const from = prevBusinessDayJP(now); // 前営業日から(祝日連休も遡る)
+  const from = new Date(now);
+  from.setDate(from.getDate() - (day === 1 ? 3 : 1)); // 月曜は金曜分から
   from.setHours(15, 30, 0, 0);
 
   const items = fetchTdnet(200).filter(it => it.pubdate >= from && !isExcluded(it.title));
+
+  // --- マーケット概況(前夜の米市場・為替・前日の日本市場・投資部門別) ---
+  let market = null;
+  let marketLines = [];
+  try {
+    market = getMarketBrief();
+    marketLines = buildMarketLines(market);
+  } catch (e) { Logger.log('marketBrief: ' + e); }
 
   // --- 注目開示の解説 ---
   let digestBody = '';
@@ -92,16 +102,18 @@ function morningDigest() {
     }).join('\n');
 
     const prompt = [
-      'あなたは日本株担当の金融記者です。以下は昨日引け後から今朝までの適時開示の一覧です。',
+      'あなたは日本株担当の金融記者です。以下は昨日引け後から今朝までの適時開示の一覧と、前夜の市況データです。',
       '朝刊のマーケット面のような文体で、投資家向けダイジェストを日本語で書いてください。',
-      '構成: (1)全体観を2行 (2)注目開示を最大5本、各2〜3行で「何が起きたか/なぜ株価に効くか/背景」を解説。',
+      '構成: (1)全体観を2行(市況データを踏まえ、本日の東京市場の地合いを導く) (2)注目開示を最大5本、各2〜3行で「何が起きたか/なぜ株価に効くか/背景」を解説。',
       '【】内の数値は開示PDFから抽出した修正率で、必ず解説に織り込むこと。',
-      '事実は開示タイトルと抽出数値の範囲にとどめ、推測は「〜とみられる」と明示。売買推奨はしない。',
+      '事実は開示タイトル・抽出数値・市況データの範囲にとどめ、推測は「〜とみられる」と明示。売買推奨はしない。',
       '出力はDiscord向けプレーンテキスト。全体で600字以内。',
+      '',
+      marketLines.length ? '【前夜・前日の市況】\n' + marketLines.join('\n') : '',
       '',
       '【開示一覧】',
       list,
-    ].join('\n');
+    ].filter(s => s !== '').join('\n');
     digestBody = callAi(prompt);
   } else {
     digestBody = '昨日引け後からの注目開示はありませんでした。';
@@ -127,10 +139,11 @@ function morningDigest() {
     `📰 **朝刊ダイジェスト** ${fmtDate(now)}`,
     '',
     digestBody,
-    '',
-    `📅 **本日の予定**`,
-    eventsText,
   ];
+  if (marketLines.length) {
+    parts.push('', `🌐 **マーケット概況**`, marketLines.map(l => `・${l}`).join('\n'));
+  }
+  parts.push('', `📅 **本日の予定**`, eventsText);
   if (answersText) {
     parts.push('', `🔎 **昨日の答え合わせ**(インパクト大銘柄の騰落率)`, answersText);
   }
@@ -145,6 +158,7 @@ function morningDigest() {
     count: items.length,
     events: events,
     answers: answers,
+    marketLines: marketLines,
   });
 
   // 朝刊対象の注目開示もタイムラインに保存(夜間分を拾う)
@@ -157,7 +171,8 @@ function morningDigest() {
 function patrol() {
   const now = new Date();
   const h = now.getHours();
-  if (!isBusinessDayJP(now)) return; // 土日祝はスキップ
+  const day = now.getDay();
+  if (day === 0 || day === 6) return;
   if (h < CONFIG.PATROL_START_HOUR || h >= CONFIG.PATROL_END_HOUR) return;
 
   const props = PropertiesService.getScriptProperties();
@@ -225,8 +240,9 @@ function processDisclosure(it) {
 /** EDINET巡回(時間トリガー: 15分間隔) — Edinet.gs の edinetPatrol を呼ぶ */
 function edinetPatrolJob() {
   const now = new Date();
+  const day = now.getDay();
   const h = now.getHours();
-  if (!isBusinessDayJP(now)) return; // 土日祝はスキップ
+  if (day === 0 || day === 6) return;
   if (h < 9 || h >= 18) return; // EDINETの受付時間帯のみ
   edinetPatrol();
 }
@@ -293,28 +309,27 @@ function callAi(prompt) {
 function postDiscord(text) {
   const url = PropertiesService.getScriptProperties().getProperty('DISCORD_WEBHOOK_URL');
   if (!url) {
-    Logger.log('postDiscord: DISCORD_WEBHOOK_URL 未設定のため送信スキップ。diagnoseDiscord() で確認を。');
+    Logger.log('postDiscord: DISCORD_WEBHOOK_URL が未設定のため送信スキップ');
     return false;
   }
+  let allOk = true;
   const chunks = [];
   for (let i = 0; i < text.length; i += 1900) chunks.push(text.slice(i, i + 1900));
-  let ok = true;
   for (const c of chunks) {
-    const res = UrlFetchApp.fetch(url.trim(), {
+    const res = UrlFetchApp.fetch(url, {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify({ content: c }),
       muteHttpExceptions: true,
     });
-    // 配信は止めない(フェイルオープン)。失敗時のみ痕跡をログに残し、切り分け可能にする。
     const code = res.getResponseCode();
-    if (code !== 204 && code !== 200) {
-      ok = false;
-      Logger.log('postDiscord: 送信失敗 HTTP ' + code + ' / ' + res.getContentText().slice(0, 200));
+    if (code !== 204 && code !== 200) { // Webhook成功は204
+      Logger.log(`postDiscord: HTTP ${code} — ${res.getContentText().slice(0, 200)}`);
+      allOk = false;
     }
     Utilities.sleep(500);
   }
-  return ok;
+  return allOk;
 }
 
 // ================= トリガー設定 =================

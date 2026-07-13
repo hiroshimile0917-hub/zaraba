@@ -22,6 +22,8 @@ const JQ_PATH_MAP = {
   '/markets/weekly_margin_interest': '/markets/margin-interest',
   '/markets/short_selling_positions':'/markets/short-sale-report',
   '/markets/trading_calendar':       '/markets/calendar',
+  '/indices/topix':                  '/indices/bars/daily/topix',
+  '/markets/trades_spec':            '/equities/investor-types',
 };
 
 /** APIキー取得。互換のため jqIdToken() も同じものを返す(truthy判定用) */
@@ -116,6 +118,13 @@ function jqShapeAsV1(v1path, rows) {
         HolidayDivision: String(firstByPattern(r, [/division/i, /holiday/i]) != null
           ? firstByPattern(r, [/division/i, /holiday/i]) : '1'),
       })) };
+    case '/indices/topix':
+      return { topix: rows.map(r => ({
+        Date: r.Date || r.D,
+        Close: firstNum(r, ['C', 'Close']),
+      })) };
+    case '/markets/trades_spec':
+      return { trades_spec: rows };
     default:
       return { data: rows };
   }

@@ -10,7 +10,7 @@
 const SHEETS = {
   articles: ['ts', 'date', 'time', 'code', 'company', 'title', 'cat', 'impact',
              'summary', 'url', 'source', 'revText', 'revPct', 'revDetail', 'capOku', 'filtered', 'id'],
-  digests:  ['ts', 'date', 'title', 'body', 'count', 'eventsJson', 'answersJson'],
+  digests:  ['ts', 'date', 'title', 'body', 'count', 'eventsJson', 'answersJson', 'marketJson'],
   caps:     ['code', 'capOku', 'updated'],
   earnings: ['date', 'code', 'company'],
 };
@@ -113,7 +113,8 @@ function normHm(v)  { return (v instanceof Date) ? fmtTime(v) : String(v || '');
 function saveDigest(d) {
   const sh = getSheet('digests');
   sh.appendRow([new Date(), d.date, d.title, d.body, d.count,
-                JSON.stringify(d.events || []), JSON.stringify(d.answers || [])]);
+                JSON.stringify(d.events || []), JSON.stringify(d.answers || []),
+                JSON.stringify(d.marketLines || [])]);
 }
 
 function getLatestDigest() {
@@ -124,6 +125,7 @@ function getLatestDigest() {
   return {
     date: r[1], title: r[2], body: r[3], count: r[4],
     events: safeParse(r[5], []), answers: safeParse(r[6], []),
+    marketLines: safeParse(r[7], []),
   };
 }
 
