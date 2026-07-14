@@ -17,7 +17,6 @@
   --text:#E9EDF5;
   --sub:#8B94A7;
   --up:#F6465D;          /* 日本式: 値上がり・インパクト大=赤 */
-  --down:#2EBD85;        /* 値下がり=緑 */
   --mid:#E8A33D;         /* 琥珀: ダイジェスト・注意 */
   --data:#5CC8FF;        /* データ・銘柄コード */
   --radius:10px;
@@ -44,7 +43,7 @@ header{
 }
 .masthead{
   font-family:"Shippori Mincho",serif;font-size:22px;letter-spacing:.35em;
-  color:var(--text);text-indent:.1em;cursor:pointer;
+  color:var(--text);text-indent:.1em;
 }
 .masthead small{
   font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.2em;
@@ -83,27 +82,6 @@ main{max-width:720px;margin:0 auto;padding:12px 16px 80px}
 .digest p{color:#C6CDDD;font-size:14px;white-space:pre-wrap}
 .digest .meta{margin-top:12px;font-size:11.5px;color:var(--sub)}
 
-/* 本日の予定 / 答え合わせ(ダイジェスト内サブブロック) */
-.subblock{
-  margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);
-}
-.subblock .sb-head{
-  font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.25em;
-  color:var(--sub);margin-bottom:6px;
-}
-.subblock ul{list-style:none}
-.subblock li{
-  font-size:13px;color:#C6CDDD;padding:2px 0;
-  display:flex;gap:8px;align-items:baseline;
-}
-.ev-dot{flex:none;width:5px;height:5px;border-radius:50%;background:var(--mid);position:relative;top:-2px}
-.ev-dot.boj{background:var(--up)} .ev-dot.fomc,.ev-dot.cpi{background:var(--data)}
-.ev-dot.sq{background:var(--mid)} .ev-dot.earnings{background:var(--sub)}
-.ans-pct{font-family:"IBM Plex Mono",monospace;font-size:13px;min-width:64px;text-align:right}
-.ans-pct.pos{color:var(--up)} .ans-pct.neg{color:var(--down)} .ans-pct.na{color:var(--sub)}
-.ans-name{cursor:pointer}
-.ans-name:hover{color:var(--data)}
-
 /* ---------- タイムライン ---------- */
 .tl-head{
   display:flex;align-items:center;gap:10px;margin:0 0 4px 2px;
@@ -117,7 +95,7 @@ main{max-width:720px;margin:0 auto;padding:12px 16px 80px}
 .item{position:relative;padding:14px 0}
 .item .time{
   position:absolute;left:-64px;top:18px;width:44px;text-align:right;
-  font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--sub);line-height:1.4;
+  font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--sub);
 }
 .item .dot{
   position:absolute;left:-15px;top:23px;width:7px;height:7px;border-radius:50%;
@@ -139,10 +117,7 @@ main{max-width:720px;margin:0 auto;padding:12px 16px 80px}
 .code{
   font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--data);
   background:rgba(92,200,255,.08);padding:1px 7px;border-radius:4px;
-  cursor:pointer;border:none;
 }
-.code:hover{background:rgba(92,200,255,.18)}
-.code:focus-visible{outline:2px solid var(--data);outline-offset:2px}
 .company{font-weight:700;font-size:14.5px}
 .badge{
   font-size:10.5px;font-weight:700;letter-spacing:.1em;
@@ -150,13 +125,6 @@ main{max-width:720px;margin:0 auto;padding:12px 16px 80px}
 }
 .badge.high{color:var(--up);background:rgba(246,70,93,.12)}
 .badge.mid{color:var(--mid);background:rgba(232,163,61,.12)}
-.badge.holding{color:var(--data);background:rgba(92,200,255,.1)}
-.rev{
-  font-family:"IBM Plex Mono",monospace;font-size:11.5px;font-weight:500;
-  padding:2px 8px;border-radius:4px;letter-spacing:0;
-}
-.rev.pos{color:var(--up);background:rgba(246,70,93,.08)}
-.rev.neg{color:var(--down);background:rgba(46,189,133,.08)}
 .title{font-size:13px;color:var(--sub);margin-bottom:8px}
 .summary{font-size:14px;color:#D7DDEA;white-space:pre-wrap}
 .card a{
@@ -165,46 +133,6 @@ main{max-width:720px;margin:0 auto;padding:12px 16px 80px}
 }
 .card a:hover{border-bottom-color:var(--data)}
 .card a:focus-visible{outline:2px solid var(--data);outline-offset:2px}
-
-/* ---------- 銘柄ページ ---------- */
-.stock-head{
-  background:linear-gradient(180deg,var(--surface-2),var(--surface));
-  border:1px solid var(--line);border-left:3px solid var(--data);
-  border-radius:var(--radius);padding:18px;margin:10px 0 22px;
-}
-.stock-head .back{
-  display:inline-block;font-size:12px;color:var(--sub);text-decoration:none;
-  margin-bottom:10px;cursor:pointer;background:none;border:none;font-family:inherit;
-}
-.stock-head .back:hover{color:var(--data)}
-.stock-head .st-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.stock-head .st-code{
-  font-family:"IBM Plex Mono",monospace;font-size:15px;color:var(--data);
-  background:rgba(92,200,255,.08);padding:2px 10px;border-radius:5px;
-}
-.stock-head h1{font-size:19px;font-weight:700}
-.context-line{
-  margin-top:10px;font-size:13px;color:var(--mid);
-  display:flex;gap:8px;align-items:baseline;
-}
-.context-line::before{content:"◆";font-size:10px}
-.stock-stats{margin-top:8px;font-size:12px;color:var(--sub)}
-
-/* 需給データ(信用残・空売り残高) */
-.supply-demand{
-  margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);
-  display:grid;gap:4px;
-}
-.sd-head{
-  font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.25em;
-  color:var(--sub);margin-bottom:2px;
-}
-.sd-row{display:flex;gap:10px;font-size:12.5px;color:#C6CDDD;align-items:baseline;flex-wrap:wrap}
-.sd-label{color:var(--sub);min-width:88px;font-size:12px}
-.sd-val{font-family:"IBM Plex Mono",monospace}
-.sd-val .delta{font-size:11px;margin-left:6px}
-.sd-val .delta.pos{color:var(--up)} .sd-val .delta.neg{color:var(--down)}
-.sd-short-name{font-size:12px;color:#C6CDDD}
 
 /* ---------- 空・エラー ---------- */
 .notice{
@@ -229,63 +157,34 @@ footer{
 
 <header>
   <div class="header-in">
-    <div class="masthead" id="masthead" role="link" tabindex="0" aria-label="ホームへ">ザラバ<small>ZARABA — JP EQUITY WIRE</small></div>
+    <div class="masthead">ザラバ<small>ZARABA — JP EQUITY WIRE</small></div>
     <div class="clock mono"><span class="live">●</span> <span id="clock">--:--:--</span> JST<br><span id="today"></span></div>
   </div>
 </header>
 
-<nav class="chips" aria-label="絞り込み" id="chips">
+<nav class="chips" aria-label="絞り込み">
   <button class="chip" aria-pressed="true"  data-filter="all">すべて</button>
   <button class="chip" aria-pressed="false" data-filter="high">インパクト大</button>
   <button class="chip" aria-pressed="false" data-filter="earnings">業績修正</button>
   <button class="chip" aria-pressed="false" data-filter="deal">TOB・提携</button>
   <button class="chip" aria-pressed="false" data-filter="return">還元・分割</button>
-  <button class="chip" aria-pressed="false" data-filter="holding">大量保有</button>
 </nav>
 
 <main>
-  <!-- ===== ホーム ===== -->
-  <div id="view-home">
-    <section class="digest" id="digest" hidden>
-      <div class="eyebrow">MORNING DIGEST ── 朝刊</div>
-      <h1 id="digest-title"></h1>
-      <p id="digest-body"></p>
-      <div class="subblock" id="events-block" hidden>
-        <div class="sb-head">TODAY ── 本日の予定</div>
-        <ul id="events-list"></ul>
-      </div>
-      <div class="subblock" id="answers-block" hidden>
-        <div class="sb-head">REVIEW ── 昨日の答え合わせ</div>
-        <ul id="answers-list"></ul>
-      </div>
-      <div class="meta" id="digest-meta"></div>
-    </section>
+  <section class="digest" id="digest" hidden>
+    <div class="eyebrow">MORNING DIGEST ── 朝刊</div>
+    <h1 id="digest-title"></h1>
+    <p id="digest-body"></p>
+    <div class="meta" id="digest-meta"></div>
+  </section>
 
-    <div class="tl-head">ZARABA TIMELINE ── 場中速報</div>
-    <ol class="timeline" id="timeline"></ol>
-    <div class="notice" id="notice" hidden></div>
-  </div>
-
-  <!-- ===== 銘柄ページ ===== -->
-  <div id="view-stock" hidden>
-    <section class="stock-head">
-      <button class="back" id="back-btn">← タイムラインに戻る</button>
-      <div class="st-row">
-        <span class="st-code mono" id="stock-code"></span>
-        <h1 id="stock-name"></h1>
-      </div>
-      <div class="context-line" id="stock-context" hidden></div>
-      <div class="stock-stats" id="stock-stats"></div>
-      <div class="supply-demand" id="supply-demand" hidden></div>
-    </section>
-    <div class="tl-head">DISCLOSURE HISTORY ── 過去開示</div>
-    <ol class="timeline" id="stock-timeline"></ol>
-    <div class="notice" id="stock-notice" hidden></div>
-  </div>
+  <div class="tl-head">ZARABA TIMELINE ── 場中速報</div>
+  <ol class="timeline" id="timeline"></ol>
+  <div class="notice" id="notice" hidden></div>
 </main>
 
 <footer>
-  出典: TDnet適時開示・EDINET。解説はAIによる自動生成で、事実は各開示原文をご確認ください。
+  出典: TDnet適時開示。解説はAIによる自動生成で、事実は各開示原文をご確認ください。
   本サイトは情報提供のみを目的とし、投資勧誘・売買推奨を行うものではありません。
 </footer>
 
@@ -298,79 +197,29 @@ const API_URL = "https://script.google.com/macros/s/AKfycbwQKAI3QM4YLl5EHEudqC56
 /* ---------- サンプルデータ(プレビュー用) ---------- */
 const SAMPLE = {
   digest: {
-    date: "7月13日(月)",
+    date: "7月7日(火)",
     title: "決算修正が相次ぐ、半導体関連に資金流入",
     body: "前日引け後は業績上方修正の開示が目立ち、円安進行を追い風に輸出関連の採算改善が相次いだ。半導体製造装置の受注回復を示す開示もあり、本日はハイテク主導の展開となりそうだ。\n\n・サンプル電機(6501) 通期営業益を12%上方修正。円安と北米データセンター向けが牽引したとみられる。\n・テスト商事(8001) 500億円を上限とする自己株式取得を発表。発行済株式の3.2%に相当し、需給の下支え要因。\n・デモ製薬(4502) 米社と抗がん剤領域で業務提携。開発費負担の軽減が中期的な利益率改善につながるとみられる。",
-    count: 34,
-    events: [
-      { type: "boj",      label: "日銀金融政策決定会合 結果発表(展望レポート公表)" },
-      { type: "cpi",      label: "米消費者物価指数(CPI)発表(日本時間 今夜)" },
-      { type: "earnings", label: "決算発表: サンプル銀行(8301)、テスト建設(1801) ほか14社" }
-    ],
-    answers: [
-      { code: "6501", company: "サンプル電機", pct: 8.2 },
-      { code: "9984", company: "デモグループ", pct: -3.1 },
-      { code: "7203", company: "サンプル自動車", pct: null, note: "(株価データ未反映)" }
-    ]
+    count: 34
   },
   items: [
     {time:"14:32", code:"6501", company:"サンプル電機", impact:"high", cat:"earnings",
      title:"2027年3月期 通期連結業績予想の上方修正に関するお知らせ",
-     revText:"営業益 会社予想比+12.4%(450→506億円)", revPct:12.4,
      summary:"①通期営業利益を従来比12%引き上げ ②市場コンセンサスを上回る水準で、引け後にかけ買い材料視されやすい ③円安と北米向けサーバー部材の需要増が背景とみられる。",
      url:"#"},
     {time:"13:05", code:"8001", company:"テスト商事", impact:"high", cat:"return",
      title:"自己株式の取得に係る事項の決定に関するお知らせ",
-     revText:"", revPct:null,
      summary:"①上限500億円・発行済株式の3.2%の自社株買いを決議 ②1株利益の押し上げと需給改善で株価にプラス ③資源高で積み上がった手元資金の還元強化の一環とみられる。",
-     url:"#"},
-    {time:"12:10", code:"6098", company:"デモホールディングス", impact:"high", cat:"holding", source:"edinet",
-     title:"変更報告書(提出者: サンプル・アクティビスト・ファンド) 保有割合 5.12%→6.34% ↑",
-     revText:"", revPct:null,
-     summary:"提出者: サンプル・アクティビスト・ファンド / 保有割合 5.12%→6.34% ↑ / ⚠️ アクティビスト系提出者",
      url:"#"},
     {time:"11:48", code:"4502", company:"デモ製薬", impact:"mid", cat:"deal",
      title:"米バイオ企業との業務提携契約締結に関するお知らせ",
-     revText:"", revPct:null,
      summary:"①抗がん剤領域で共同開発契約を締結 ②短期の業績影響は限定的だがパイプライン評価の見直し余地 ③特許切れを見据えた後続候補の確保が狙いとみられる。",
      url:"#"},
-    {time:"10:20", code:"9202", company:"サンプル空輸", impact:"mid", cat:"earnings",
-     title:"2027年3月期 通期連結業績予想の修正に関するお知らせ",
-     revText:"営業益 会社予想比-6.8%(220→205億円)", revPct:-6.8,
-     summary:"①通期営業益を6.8%下方修正 ②燃料費上昇の転嫁遅れが利益を圧迫 ③国際線需要は堅調で、下期の価格改定が焦点とみられる。",
+    {time:"10:20", code:"7203", company:"サンプル自動車", impact:"mid", cat:"earnings",
+     title:"月次生産・販売実績(6月)に関するお知らせ",
+     summary:"①世界生産が前年比+8%と3カ月連続プラス ②北米在庫の正常化が確認されれば通期計画の上振れ観測につながる ③半導体調達の改善が寄与したとみられる。",
      url:"#"}
-  ],
-  stocks: {
-    "6501": {
-      code:"6501", company:"サンプル電機",
-      extras:{
-        capOku: 8452,
-        margin: { date:"2026-07-03", long: 2340000, short: 512000, longPrev: 2510000, shortPrev: 448000 },
-        shortPositions: [
-          { name:"サンプル・キャピタル・マネジメント", ratio:1.24, date:"2026-07-08" },
-          { name:"デモ・アセット・パートナーズ", ratio:0.68, date:"2026-07-06" }
-        ]
-      },
-      items:[
-        {time:"07/13 14:32", code:"6501", company:"サンプル電機", impact:"high", cat:"earnings",
-         title:"2027年3月期 通期連結業績予想の上方修正に関するお知らせ",
-         revText:"営業益 会社予想比+12.4%(450→506億円)", revPct:12.4,
-         summary:"①通期営業利益を従来比12%引き上げ ②市場コンセンサス超え ③円安と北米向け需要増が背景とみられる。", url:"#"},
-        {time:"04/27 15:00", code:"6501", company:"サンプル電機", impact:"mid", cat:"earnings",
-         title:"2026年3月期 決算短信〔日本基準〕(連結)",
-         revText:"", revPct:null,
-         summary:"①前期営業益は計画線で着地 ②新年度ガイダンスは保守的 ③為替前提1ドル140円とみられる。", url:"#"},
-        {time:"01/30 15:30", code:"6501", company:"サンプル電機", impact:"high", cat:"earnings",
-         title:"2026年3月期 通期連結業績予想の上方修正に関するお知らせ",
-         revText:"営業益 会社予想比+8.0%(400→432億円)", revPct:8.0,
-         summary:"①3Q累計の進捗率が85%に達し通期を上方修正 ②2四半期連続の増額 ③データセンター投資の回復が寄与とみられる。", url:"#"},
-        {time:"10/30 15:00", code:"6501", company:"サンプル電機", impact:"mid", cat:"earnings",
-         title:"2026年3月期 第2四半期決算短信〔日本基準〕(連結)",
-         revText:"営業益 会社予想比+5.2%(380→400億円)", revPct:5.2,
-         summary:"①上期は増収増益で着地し通期を小幅増額 ②受注残が積み上がる ③部材調達の正常化が背景とみられる。", url:"#"}
-      ]
-    }
-  }
+  ]
 };
 
 /* ---------- 時計 ---------- */
@@ -383,72 +232,46 @@ function tick(){
 }
 tick(); setInterval(tick,1000);
 
-/* ---------- 共通描画部品 ---------- */
-function esc(s){
-  return String(s).replace(/[&<>"']/g, c =>
-    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-}
+/* ---------- 描画 ---------- */
+let DATA = null;
 
-function revBadge(it){
-  if(!it.revText) return "";
-  const cls = (it.revPct != null && it.revPct < 0) ? "neg" : "pos";
-  return `<span class="rev ${cls}">${esc(it.revText)}</span>`;
-}
+function render(filter){
+  const tl = document.getElementById("timeline");
+  const notice = document.getElementById("notice");
+  tl.innerHTML = "";
 
-function itemHtml(it){
-  const isHolding = it.cat === "holding";
-  const badgeCls = it.impact === "high" ? "high" : "mid";
-  const badgeTxt = it.impact === "high" ? "インパクト大" : "注目";
-  return `
-    <span class="time mono">${esc(it.time)}</span>
-    <span class="dot" aria-hidden="true"></span>
-    <article class="card">
-      <div class="tag-row">
-        <button class="code" data-code="${esc(it.code)}" aria-label="${esc(it.company)}の銘柄ページ">${esc(it.code)}</button>
-        <span class="company">${esc(it.company)}</span>
-        <span class="badge ${badgeCls}">${badgeTxt}</span>
-        ${isHolding ? `<span class="badge holding">5%ルール</span>` : ""}
-        ${revBadge(it)}
-      </div>
-      <div class="title">${esc(it.title)}</div>
-      <div class="summary">${esc(it.summary)}</div>
-      ${it.url && it.url !== "#" ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">開示原文を読む →</a>` : ""}
-    </article>`;
-}
+  const items = DATA.items.filter(it =>
+    filter === "all" ? true :
+    filter === "high" ? it.impact === "high" : it.cat === filter
+  );
 
-function renderList(listEl, noticeEl, items, emptyMsg){
-  listEl.innerHTML = "";
   if(items.length === 0){
-    noticeEl.hidden = false;
-    noticeEl.textContent = emptyMsg;
+    notice.hidden = false;
+    notice.textContent = "この条件の速報はまだありません。開示が出しだい、ここに流れます。";
     return;
   }
-  noticeEl.hidden = true;
+  notice.hidden = true;
+
   for(const it of items){
     const li = document.createElement("li");
     li.className = "item";
     li.dataset.impact = it.impact;
-    li.innerHTML = itemHtml(it);
-    listEl.appendChild(li);
+    li.innerHTML = `
+      <span class="time mono">${esc(it.time)}</span>
+      <span class="dot" aria-hidden="true"></span>
+      <article class="card">
+        <div class="tag-row">
+          <span class="code">${esc(it.code)}</span>
+          <span class="company">${esc(it.company)}</span>
+          <span class="badge ${it.impact === "high" ? "high" : "mid"}">
+            ${it.impact === "high" ? "インパクト大" : "注目"}</span>
+        </div>
+        <div class="title">${esc(it.title)}</div>
+        <div class="summary">${esc(it.summary)}</div>
+        ${it.url ? `<a href="${esc(it.url)}" target="_blank" rel="noopener">開示原文を読む →</a>` : ""}
+      </article>`;
+    tl.appendChild(li);
   }
-}
-
-/* ---------- ホーム描画 ---------- */
-let DATA = null;
-let currentFilter = "all";
-
-function render(filter){
-  currentFilter = filter;
-  const items = (DATA.items || []).filter(it =>
-    filter === "all" ? true :
-    filter === "high" ? it.impact === "high" : it.cat === filter
-  );
-  renderList(
-    document.getElementById("timeline"),
-    document.getElementById("notice"),
-    items,
-    "この条件の速報はまだありません。開示が出しだい、ここに流れます。"
-  );
 }
 
 function renderDigest(){
@@ -460,159 +283,15 @@ function renderDigest(){
   document.getElementById("digest-body").textContent = d.body || "";
   document.getElementById("digest-meta").textContent =
     `${d.date} 8:30配信 / 対象開示 ${d.count}件`;
-
-  // 本日の予定
-  const evBlock = document.getElementById("events-block");
-  const evList = document.getElementById("events-list");
-  evList.innerHTML = "";
-  if(d.events && d.events.length){
-    evBlock.hidden = false;
-    for(const ev of d.events){
-      const li = document.createElement("li");
-      li.innerHTML = `<span class="ev-dot ${esc(ev.type||"")}" aria-hidden="true"></span><span>${esc(ev.label)}</span>`;
-      evList.appendChild(li);
-    }
-  }else{
-    evBlock.hidden = true;
-  }
-
-  // 昨日の答え合わせ
-  const anBlock = document.getElementById("answers-block");
-  const anList = document.getElementById("answers-list");
-  anList.innerHTML = "";
-  if(d.answers && d.answers.length){
-    anBlock.hidden = false;
-    for(const a of d.answers){
-      const li = document.createElement("li");
-      let pctHtml;
-      if(a.pct == null){
-        pctHtml = `<span class="ans-pct na">--</span>`;
-      }else{
-        const cls = a.pct >= 0 ? "pos" : "neg";
-        const sign = a.pct > 0 ? "+" : "";
-        pctHtml = `<span class="ans-pct ${cls}">${sign}${a.pct.toFixed(1)}%</span>`;
-      }
-      li.innerHTML = `${pctHtml}<span class="ans-name" data-code="${esc(a.code)}">${esc(a.company)}(${esc(a.code)})</span>${a.note ? `<span style="color:var(--sub);font-size:11.5px">${esc(a.note)}</span>` : ""}`;
-      anList.appendChild(li);
-    }
-  }else{
-    anBlock.hidden = true;
-  }
 }
 
-/* ---------- 銘柄ページ ---------- */
-async function loadStock(code){
-  let data = null;
-  if(API_URL){
-    try{
-      const res = await fetch(`${API_URL}${API_URL.includes("?") ? "&" : "?"}code=${encodeURIComponent(code)}`);
-      data = await res.json();
-    }catch(e){ data = null; }
-  }else{
-    data = SAMPLE.stocks[code] ||
-      { code, company: ((DATA && DATA.items.find(i=>i.code===code)) || {}).company || "", items: DATA ? DATA.items.filter(i=>i.code===code) : [] };
-  }
-  if(!data) data = { code, company:"", items:[] };
-
-  document.getElementById("stock-code").textContent = data.code;
-  document.getElementById("stock-name").textContent = data.company || "銘柄情報";
-  const capTxt = data.extras && data.extras.capOku != null ? `時価総額 約${fmtCap(data.extras.capOku)} / ` : "";
-  document.getElementById("stock-stats").textContent =
-    (capTxt || data.items.length) ? `${capTxt}保存済み開示 ${data.items.length}件` : "";
-  renderSupplyDemand(data.extras);
-
-  // 文脈行: 業績修正の連続性を読む
-  const ctx = buildContext(data.items);
-  const ctxEl = document.getElementById("stock-context");
-  if(ctx){ ctxEl.hidden = false; ctxEl.textContent = ctx; } else { ctxEl.hidden = true; }
-
-  renderList(
-    document.getElementById("stock-timeline"),
-    document.getElementById("stock-notice"),
-    data.items,
-    "この銘柄の保存済み開示はまだありません。"
-  );
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
-function fmtCap(oku){
-  return oku >= 10000 ? (oku/10000).toFixed(1).replace(/\.0$/,"") + "兆円" : Math.round(oku).toLocaleString() + "億円";
-}
-
-function fmtShares(n){
-  if(n >= 1e8) return (n/1e8).toFixed(1).replace(/\.0$/,"") + "億株";
-  if(n >= 1e4) return Math.round(n/1e4).toLocaleString() + "万株";
-  return n.toLocaleString() + "株";
-}
-
-/* 信用残・空売り残高(J-Quants) */
-function renderSupplyDemand(ex){
-  const el = document.getElementById("supply-demand");
-  el.innerHTML = "";
-  const hasMargin = ex && ex.margin;
-  const hasShort = ex && ex.shortPositions && ex.shortPositions.length;
-  if(!hasMargin && !hasShort){ el.hidden = true; return; }
-  el.hidden = false;
-
-  let html = `<div class="sd-head">SUPPLY/DEMAND ── 需給(J-Quants)</div>`;
-  if(hasMargin){
-    const m = ex.margin;
-    const d = (v, p) => {
-      if(p == null || !p) return "";
-      const diff = ((v - p) / p) * 100;
-      const cls = diff >= 0 ? "pos" : "neg";
-      return `<span class="delta ${cls}">${diff >= 0 ? "+" : ""}${diff.toFixed(1)}%</span>`;
-    };
-    html += `<div class="sd-row"><span class="sd-label">信用買い残</span><span class="sd-val">${fmtShares(m.long)}${d(m.long, m.longPrev)}</span></div>`;
-    html += `<div class="sd-row"><span class="sd-label">信用売り残</span><span class="sd-val">${fmtShares(m.short)}${d(m.short, m.shortPrev)}</span></div>`;
-    html += `<div class="sd-row"><span class="sd-label"></span><span style="font-size:11px;color:var(--sub)">${esc(m.date)}時点(週次)</span></div>`;
-  }
-  if(hasShort){
-    html += `<div class="sd-row" style="margin-top:4px"><span class="sd-label">空売り残高</span><span style="font-size:11px;color:var(--sub)">残高割合0.5%以上の報告者</span></div>`;
-    for(const s of ex.shortPositions){
-      html += `<div class="sd-row" style="padding-left:98px;flex-wrap:nowrap"><span class="sd-val" style="flex:none">${s.ratio.toFixed(2)}%</span><span class="sd-short-name" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(s.name)}</span></div>`;
-    }
-  }
-  el.innerHTML = html;
-}
-
-/** 「3回連続の上方修正」のような文脈を生成(新しい順の配列を受ける) */
-function buildContext(items){
-  const revs = items.filter(i => i.revPct != null);
-  if(revs.length === 0){
-    const highs = items.filter(i => i.impact === "high").length;
-    return highs >= 2 ? `直近${items.length}件中、インパクト大の開示が${highs}件` : "";
-  }
-  let up = 0, down = 0;
-  for(const r of revs){
-    if(r.revPct > 0 && down === 0) up++;
-    else if(r.revPct < 0 && up === 0) down++;
-    else break;
-  }
-  if(up >= 2) return `${up}回連続の上方修正 — 会社計画の保守性が続いているとみられる`;
-  if(down >= 2) return `${down}回連続の下方修正 — 業績モメンタムに注意`;
-  if(revs.length === 1) return revs[0].revPct > 0 ? "直近開示で上方修正" : "直近開示で下方修正";
-  const ups = revs.filter(r=>r.revPct>0).length;
-  return `保存済みの業績修正${revs.length}件中、上方${ups}件・下方${revs.length-ups}件`;
-}
-
-/* ---------- ルーティング(#/stock/XXXX) ---------- */
-function route(){
-  const m = location.hash.match(/^#\/stock\/([0-9A-Z]{4,5})$/);
-  const home = document.getElementById("view-home");
-  const stock = document.getElementById("view-stock");
-  const chips = document.getElementById("chips");
-  if(m){
-    home.hidden = true; stock.hidden = false; chips.style.display = "none";
-    loadStock(m[1]);
-    window.scrollTo(0, 0);
-  }else{
-    stock.hidden = true; home.hidden = false; chips.style.display = "";
-  }
-}
-window.addEventListener("hashchange", route);
-
-/* ---------- イベント ---------- */
-document.getElementById("chips").addEventListener("click", e=>{
+/* ---------- フィルタ ---------- */
+document.querySelector(".chips").addEventListener("click", e=>{
   const btn = e.target.closest(".chip");
   if(!btn) return;
   document.querySelectorAll(".chip").forEach(c=>c.setAttribute("aria-pressed","false"));
@@ -620,23 +299,12 @@ document.getElementById("chips").addEventListener("click", e=>{
   render(btn.dataset.filter);
 });
 
-document.addEventListener("click", e=>{
-  const codeBtn = e.target.closest("[data-code]");
-  if(codeBtn){ location.hash = `#/stock/${codeBtn.dataset.code}`; }
-});
-
-document.getElementById("back-btn").addEventListener("click", ()=>{ location.hash = ""; });
-const mast = document.getElementById("masthead");
-mast.addEventListener("click", ()=>{ location.hash = ""; });
-mast.addEventListener("keydown", e=>{ if(e.key==="Enter") location.hash = ""; });
-
 /* ---------- 起動 ---------- */
 async function boot(){
   if(API_URL){
     try{
       const res = await fetch(API_URL);
       DATA = await res.json();
-      if(!DATA || !Array.isArray(DATA.items)) DATA = SAMPLE;
     }catch(e){
       DATA = SAMPLE;
     }
@@ -645,7 +313,6 @@ async function boot(){
   }
   renderDigest();
   render("all");
-  route();
 }
 boot();
 </script>
