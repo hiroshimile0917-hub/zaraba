@@ -9,6 +9,7 @@ Webアプリに集中。Discordは停止、再開可能なコードは保持。T
 3. feat/morning-top-three: 最大3本の朝刊本文、その他の注目開示の折りたたみ。決算予定はマスターで社名補完、時価総額取得済み上位8社と残件数。不明な時価総額は順位付けせず未取得数を表示。
 4. fix/holding-importance: 1ポイント未満の増減は通常。新規5%超えと大幅増減は注目、アクティビストは大。APIでlowをmidへ変換しない。
 5. feat/stock-search-watchlist: 社名/コード検索、100銘柄までの登録、登録優先表示、ウォッチのみ。localStorageはtry/catch、書込不可ならメモリ保持。ログイン不要。
+6. docs/analytics-options: docs/analytics-options.mdに無料3案を記載。承認前なので未導入。
 
 ## 制約・未確認
 - GAS本番への反映は未実施。実行中のGEMINI_MODEL・実行ログは未確認。オーナーのGAS確認が必要。
