@@ -10,7 +10,7 @@
 const SHEETS = {
   articles: ['ts', 'date', 'time', 'code', 'company', 'title', 'cat', 'impact',
              'summary', 'url', 'source', 'revText', 'revPct', 'revDetail', 'capOku', 'filtered', 'id'],
-  digests:  ['ts', 'date', 'title', 'body', 'count', 'eventsJson', 'answersJson', 'marketJson'],
+  digests:  ['ts', 'date', 'title', 'body', 'count', 'eventsJson', 'answersJson', 'marketJson', 'moreJson'],
   caps:     ['code', 'capOku', 'updated'],
   earnings: ['date', 'code', 'company'],
 };
@@ -33,6 +33,9 @@ function getSheet(name) {
     sh = ss.insertSheet(name);
     sh.appendRow(SHEETS[name]);
     sh.setFrozenRows(1);
+  }
+  if (name === 'digests' && sh.getLastColumn() < SHEETS.digests.length) {
+    sh.getRange(1, 1, 1, SHEETS.digests.length).setValues([SHEETS.digests]);
   }
   return sh;
 }
@@ -114,7 +117,7 @@ function saveDigest(d) {
   const sh = getSheet('digests');
   sh.appendRow([new Date(), d.date, d.title, d.body, d.count,
                 JSON.stringify(d.events || []), JSON.stringify(d.answers || []),
-                JSON.stringify(d.marketLines || [])]);
+                JSON.stringify(d.marketLines || []), JSON.stringify(d.more || [])]);
 }
 
 function getLatestDigest() {
@@ -125,7 +128,7 @@ function getLatestDigest() {
   return {
     date: r[1], title: r[2], body: r[3], count: r[4],
     events: safeParse(r[5], []), answers: safeParse(r[6], []),
-    marketLines: safeParse(r[7], []),
+    marketLines: safeParse(r[7], []), more: safeParse(r[8], []),
   };
 }
 

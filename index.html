@@ -263,6 +263,7 @@ footer{
       <div class="eyebrow">MORNING DIGEST ── 朝刊</div>
       <h1 id="digest-title"></h1>
       <p id="digest-body"></p>
+      <details id="digest-more" hidden><summary>その他の注目開示</summary><ul id="digest-more-list"></ul></details>
       <div class="subblock" id="market-block" hidden>
         <div class="sb-head">MARKET ── マーケット概況</div>
         <ul id="market-list"></ul>
@@ -485,7 +486,12 @@ function renderDigest(){
   document.getElementById("digest-title").textContent = d.title || `${d.date} の注目開示`;
   document.getElementById("digest-body").textContent = d.body || "";
   document.getElementById("digest-meta").textContent =
-    `${d.date} 8:30配信 / 対象開示 ${d.count}件`;
+    `${d.date} / 集計対象 ${d.count}件から今日の要点を選定`;
+
+  const more = Array.isArray(d.more) ? d.more : [];
+  document.getElementById("digest-more").hidden = !more.length;
+  document.getElementById("digest-more-list").innerHTML = more.map(it =>
+    `<li>${esc(it.company || '社名未取得')}(${esc(it.code)}) ${esc(it.title)}</li>`).join('');
 
   // マーケット概況
   const mkBlock = document.getElementById("market-block");
@@ -536,7 +542,7 @@ function renderDigest(){
         const sign = a.pct > 0 ? "+" : "";
         pctHtml = `<span class="ans-pct ${cls}">${sign}${a.pct.toFixed(1)}%</span>`;
       }
-      li.innerHTML = `${pctHtml}<span class="ans-name" data-code="${esc(a.code)}">${esc(a.company)}(${esc(a.code)})</span>${a.note ? `<span style="color:var(--sub);font-size:11.5px">${esc(a.note)}</span>` : ""}`;
+      li.innerHTML = `${pctHtml}<span class="ans-name" data-code="${esc(a.code)}">${esc(a.company || '社名未取得')}(${esc(a.code)})</span>${a.note ? `<span style="color:var(--sub);font-size:11.5px">${esc(a.note)}</span>` : ""}`;
       anList.appendChild(li);
     }
   }else{
