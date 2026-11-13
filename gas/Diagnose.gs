@@ -6,51 +6,15 @@
 
 /** Gemini失敗の切り分け: キー無効 / API無効 / モデル名廃止 を判定 */
 function diagnoseGemini() {
-  const out = [];
   const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  Logger.log(key ? 'Geminiキー設定あり（値は非表示）' : 'Geminiキー未設定');
+  Logger.log('Gemini model=' + geminiModel());
+  geminiUsageStatus(); // 生成を消費しない診断を既定とする
+}
 
-  if (!key) { Logger.log('❌ GEMINI_API_KEY が未設定'); return; }
-  out.push(`✅ キー設定あり(長さ${key.length}文字 / 先頭${key.slice(0, 4)}…)`);
-  if (key.trim() !== key) out.push('⚠ キーの前後に空白/改行あり → 貼り直し推奨');
-  if (!/^AIza/.test(key.trim())) out.push('⚠ 通常キーは「AIza」で始まります。別の文字列を貼っていないか確認');
-
-  // 1) 利用可能モデル一覧(キーの有効性チェックを兼ねる)
-  try {
-    const res = UrlFetchApp.fetch(
-      'https://generativelanguage.googleapis.com/v1beta/models?key=' + encodeURIComponent(key.trim()),
-      { muteHttpExceptions: true });
-    const code = res.getResponseCode();
-    if (code === 200) {
-      const models = (JSON.parse(res.getContentText()).models || [])
-        .map(m => String(m.name).replace('models/', ''))
-        .filter(n => n.includes('flash') || n.includes('gemini'));
-      out.push('✅ キー有効。利用可能モデル(抜粋): ' + models.slice(0, 10).join(', '));
-      out.push(models.includes(CONFIG.GEMINI_MODEL)
-        ? `✅ 設定中のモデル「${CONFIG.GEMINI_MODEL}」は利用可能`
-        : `❌ 設定中のモデル「${CONFIG.GEMINI_MODEL}」が一覧にない → Code.gs の CONFIG.GEMINI_MODEL を上の一覧のflash系に変更`);
-    } else {
-      out.push(`❌ モデル一覧取得失敗 HTTP ${code}`);
-      out.push('   body=' + res.getContentText().slice(0, 300));
-      if (code === 400 || code === 403) out.push('   → キーが無効。AI Studio (aistudio.google.com) でキーを再発行して貼り直し');
-      if (code === 429) out.push('   → 無料枠のレート制限。数分待って再実行');
-    }
-  } catch (e) { out.push('❌ 例外: ' + e); }
-
-  // 2) 実際の生成テスト(エラー本文を表示)
-  try {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${key.trim()}`;
-    const res = UrlFetchApp.fetch(url, {
-      method: 'post', contentType: 'application/json',
-      payload: JSON.stringify({ contents: [{ parts: [{ text: 'テストと返して' }] }] }),
-      muteHttpExceptions: true,
-    });
-    const code = res.getResponseCode();
-    out.push(code === 200
-      ? '✅ 生成テスト成功: ' + JSON.parse(res.getContentText()).candidates[0].content.parts[0].text.trim().slice(0, 30)
-      : `❌ 生成テスト失敗 HTTP ${code}\n   body=` + res.getContentText().slice(0, 400));
-  } catch (e) { out.push('❌ 生成テスト例外: ' + e); }
-
-  Logger.log(out.join('\n'));
+/** 明示的に設定を有効化した場合だけ、場中と同じ残枠で生成テスト。 */
+function diagnoseGeminiGenerate() {
+  Logger.log(callAi('テストと返して', '生成テストはスキップまたは失敗', 'diagnostic'));
 }
 
 /** J-Quants認証失敗の切り分け: 資格情報誤り / 形式問題 を判定 */

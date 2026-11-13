@@ -26,13 +26,17 @@ function isRevisionTitle(title) {
  */
 function extractRevision(pdfUrl) {
   if (!pdfUrl) return null;
+  const cached = readGeminiCache('pdf', pdfUrl);
+  if (cached) {
+    try { return computeRevision(JSON.parse(cached)); } catch (e) { return null; }
+  }
+  const budget = inspectGeminiBudget('pdf');
+  if (!budget || !budget.allowed) return null; // 枠がなければPDF自体もダウンロードしない
   try {
     const blob = UrlFetchApp.fetch(pdfUrl, { muteHttpExceptions: true }).getBlob();
     if (blob.getBytes().length > 15 * 1024 * 1024) return null; // Gemini inline上限に配慮
     const b64 = Utilities.base64Encode(blob.getBytes());
 
-    const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${key}`;
     const prompt = [
       'この適時開示PDFが業績予想または配当予想の修正であれば、修正前(前回発表予想)と修正後(今回修正予想)の数値を抽出してください。',
       '対象は通期(通期がなければ最も長い期間)の連結(なければ単体)予想。',
@@ -49,13 +53,9 @@ function extractRevision(pdfUrl) {
       ]}],
       generationConfig: { response_mime_type: 'application/json', temperature: 0 },
     };
-    const res = UrlFetchApp.fetch(url, {
-      method: 'post', contentType: 'application/json',
-      payload: JSON.stringify(payload), muteHttpExceptions: true,
-    });
-    if (res.getResponseCode() !== 200) return null;
-    const out = JSON.parse(res.getContentText());
-    const data = JSON.parse(out.candidates[0].content.parts[0].text);
+    const text = requestGemini(payload, 'pdf', pdfUrl);
+    if (!text) return null;
+    const data = JSON.parse(text);
     return computeRevision(data);
   } catch (e) {
     Logger.log('extractRevision error: ' + e);

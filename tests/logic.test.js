@@ -22,7 +22,7 @@ global.SpreadsheetApp = {}; global.LockService = {}; global.ScriptApp = {}; glob
 
 // gasファイルを結合して評価
 const gasDir = path.join(__dirname, '..', 'gas');
-const src = ['Code.gs', 'Analyze.gs', 'Market.gs', 'Edinet.gs', 'CalendarEvents.gs', 'JQuants.gs', 'TradingCalendar.gs']
+const src = ['Code.gs', 'Gemini.gs', 'Analyze.gs', 'Market.gs', 'Edinet.gs', 'CalendarEvents.gs', 'JQuants.gs', 'TradingCalendar.gs']
   .map(f => fs.readFileSync(path.join(gasDir, f), 'utf8')).join('\n');
 eval(src + '\nglobal.ACTIVIST_WATCHLIST = ACTIVIST_WATCHLIST;');
 
@@ -228,27 +228,45 @@ t('ダイジェスト見出し切り出し', () => {
 console.log('--- Gemini / 朝刊フォールバック ---');
 const vm = require('vm');
 function aiContext(sequence, key = 'test-secret') {
-  const logs = [], sleeps = [], requests = [];
+  const logs = [], sleeps = [], requests = [], cache = new Map();
+  const props = new Map([['GEMINI_API_KEY', key]]);
+  let timestamp = Date.parse('2026-11-13T08:30:00+09:00');
+  const lock = { available: true, tryLock() { return this.available; }, releaseLock() {} };
   const context = vm.createContext({
-    PropertiesService: { getScriptProperties: () => ({ getProperty: name => name === 'GEMINI_API_KEY' ? key : null }) },
+    Date: class extends Date { constructor(...args) { super(...(args.length ? args : [timestamp])); } static now() { return timestamp; } },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: name => props.get(name) || null, setProperty: (name, value) => props.set(name, value) }) },
+    LockService: { getScriptLock: () => lock },
+    CacheService: { getScriptCache: () => ({get: name => { const entry = cache.get(name); return entry && entry.until > timestamp ? entry.text : null; }, put: (name,text,ttl) => cache.set(name,{text,until:timestamp+ttl*1000})}) },
     Logger: { log: message => logs.push(message) },
-    Utilities: { sleep: ms => sleeps.push(ms) },
+    Utilities: {
+      sleep: ms => { sleeps.push(ms); timestamp += ms; },
+      formatDate: (date, tz) => {
+        const parts = new Intl.DateTimeFormat('en-US', {timeZone:tz,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date);
+        const value = name => parts.find(part => part.type === name).value;
+        return `${value('year')}-${value('month')}-${value('day')}`;
+      },
+      DigestAlgorithm: { SHA_256: 'sha256' }, Charset: {UTF_8:'utf8'},
+      computeDigest: (algorithm, value) => [...require('crypto').createHash(algorithm).update(value).digest()],
+      base64Encode: () => 'pdf',
+    },
     UrlFetchApp: { fetch: (url, options) => {
       requests.push({ url, options });
       const next = sequence.shift();
       if (next instanceof Error) throw next;
-      return { getResponseCode: () => next[0], getContentText: () => next[1] };
+      return { getResponseCode: () => next[0], getContentText: () => next[1], getAllHeaders:()=>next[2] || {} };
     } },
   });
-  vm.runInContext(fs.readFileSync(path.join(gasDir, 'Code.gs'), 'utf8'), context);
-  return { context, logs, sleeps, requests };
+  for (const file of ['Code.gs','Gemini.gs','Analyze.gs']) vm.runInContext(fs.readFileSync(path.join(gasDir, file), 'utf8'), context);
+  // 従来のHTTP/パース単体テストでは間隔を省略。間隔そのものは別ケースで検証。
+  vm.runInContext('CONFIG.GEMINI_MIN_INTERVAL_MS = 0', context);
+  return { context, logs, sleeps, requests, props, cache, lock, setTime: value => { timestamp = Date.parse(value); } };
 }
 const aiOk = JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ thought: true, text: 'internal' }, { text: '解説' }, { text: '続き' }] } }] });
-t('429/503の後に回復、バックオフとモデル・キー送信を確認', () => {
-  const c = aiContext([[429, 'quota'], [503, 'unavailable'], [200, aiOk]]);
+t('503の後に回復、バックオフとモデル・キー送信を確認', () => {
+  const c = aiContext([[503, 'unavailable'], [503, 'unavailable'], [200, aiOk]]);
   assert.strictEqual(c.context.callAi('入力', '一覧'), '解説\n続き');
   assert.deepStrictEqual(c.sleeps, [2000, 4000]);
-  assert(c.logs.some(x => x.includes('HTTP 429') && x.includes('quota')));
+  assert(c.logs.some(x => x.includes('HTTP 503') && x.includes('unavailable')));
   assert(c.requests[0].url.includes('gemini-flash-latest'));
   assert(!c.requests[0].url.includes('test-secret'));
   assert.strictEqual(c.requests[0].options.headers['x-goog-api-key'], 'test-secret');
@@ -272,9 +290,10 @@ t('不正JSON/空候補/ブロック/出力打切りで一覧に縮退', () => {
 });
 t('制限継続/通信例外でも3回で終了', () => {
   for (const sequence of [Array.from({ length: 3 }, () => [429, 'quota']), Array.from({ length: 3 }, () => new Error('network'))]) {
+    const expected = sequence[0] instanceof Error ? 3 : 1;
     const c = aiContext(sequence);
     assert.strictEqual(c.context.callAi('入力', '一覧'), '一覧');
-    assert.strictEqual(c.requests.length, 3);
+    assert.strictEqual(c.requests.length, expected);
   }
 });
 t('キー未設定はAPIを呼ばない', () => {
@@ -394,6 +413,181 @@ t('APIはlowをmidへ変換しない', () => {
   const context = vm.createContext({fmtYmd:()=> '2026-11-13'});
   vm.runInContext(fs.readFileSync(path.join(gasDir, 'Api.gs'), 'utf8'), context);
   assert.equal(context.toApiItem({date:'2026-11-13',time:'10:00',impact:'low'}).impact, 'low');
+});
+
+console.log('--- Gemini無料枠の共通管理 ---');
+const daily429 = JSON.stringify({error:{message:'quota exceeded',details:[{violations:[{quotaId:'GenerateRequestsPerDayPerProjectPerModel-FreeTier'}]},{retryDelay:'11551s'}]}});
+t('日次429は1回で終了し、PDF/場中/朝刊/診断の後続もPTリセットまで無通信', () => {
+  const c = aiContext([[429,daily429],[200,aiOk]]);
+  assert.equal(c.context.callAi('入力','一覧','morning'), '一覧');
+  for (const purpose of ['pdf','intraday','morning','diagnostic']) assert.equal(c.context.requestGemini({},purpose), null);
+  assert.equal(c.context.extractRevision('https://example.com/file.pdf'), null);
+  assert.equal(c.requests.length, 1);
+  assert.equal(c.sleeps.length, 0);
+  assert.equal(c.context.geminiUsageStatus().dailyBlocked, true);
+  // JSTの深夜をまたいでも、PTの同じ日なら解除しない。
+  c.setTime('2026-11-13T16:59:59+09:00');
+  assert.equal(c.context.requestGemini({},'intraday'), null);
+  c.setTime('2026-11-13T17:00:00+09:00');
+  assert.equal(c.context.requestGemini({},'intraday'), '解説\n続き');
+  assert.equal(c.context.geminiUsageStatus().used, 1);
+});
+t('PDFと場中が17回使っても、朝刊用3枠は残る。診断も予約枠を使えない', () => {
+  const c = aiContext(Array.from({length:20},()=>[200,aiOk]));
+  vm.runInContext('CONFIG.GEMINI_DIAGNOSTIC_GENERATE = true', c.context);
+  for (let n=0;n<17;n++) assert(c.context.requestGemini({},n<4 ? 'pdf':'intraday'));
+  assert.equal(c.context.requestGemini({},'diagnostic'), null);
+  for (let n=0;n<3;n++) assert(c.context.requestGemini({},'morning'));
+  assert.equal(c.context.requestGemini({},'morning'), null);
+  assert.equal(c.requests.length,20);
+  const state = c.context.geminiUsageStatus();
+  assert.equal(state.optionalUsed,17); assert.equal(state.used,20);
+});
+t('PTリセット後の夜間手動朝刊でも、翌朝用の予約枠を奪わない', () => {
+  const c = aiContext(Array.from({length:20},()=>[200,aiOk]));
+  c.setTime('2026-11-13T20:00:00+09:00');
+  for(let n=0;n<17;n++) assert(c.context.requestGemini({},'morning'));
+  assert.equal(c.context.requestGemini({},'morning'), null);
+  c.setTime('2026-11-14T08:30:00+09:00');
+  assert(c.context.requestGemini({},'morning'));
+});
+t('短時間429はRetryInfo/Retry-Afterを尊重し、日次枠を永久停止しない', () => {
+  const body = JSON.stringify({error:{message:'requests per minute exceeded',details:[{retryDelay:'120s'}]}});
+  const c = aiContext([[429,body,{'Retry-After':'180'}],[200,aiOk]]);
+  assert.equal(c.context.requestGemini({},'morning'),null);
+  assert.equal(c.context.requestGemini({},'intraday'),null);
+  assert.equal(c.requests.length,1);
+  assert.equal(c.context.geminiUsageStatus().dailyBlocked,false);
+  c.setTime('2026-11-13T08:33:01+09:00');
+  assert(c.context.requestGemini({},'morning'));
+});
+t('共有間隔: 場中は待たず縮退、朝刊だけ上限内で待機し送信', () => {
+  const c = aiContext([[200,aiOk],[200,aiOk]]);
+  vm.runInContext('CONFIG.GEMINI_MIN_INTERVAL_MS = 15000', c.context);
+  assert(c.context.requestGemini({},'intraday'));
+  assert.equal(c.context.requestGemini({},'pdf'),null);
+  assert(c.context.requestGemini({},'morning'));
+  assert.deepEqual(c.sleeps,[15000]); assert.equal(c.requests.length,2);
+});
+t('ロック不可・破損台帳は無通信、同時予約は最後の1枠を二重利用しない', () => {
+  const c = aiContext([]);
+  c.lock.available=false;
+  assert.equal(c.context.requestGemini({},'morning'),null);
+  c.lock.available=true;
+  c.props.set('GEMINI_USAGE_V1','bad');
+  assert.equal(c.context.requestGemini({},'morning'),null);
+  c.props.set('GEMINI_USAGE_V1',JSON.stringify({day:'2026-11-12',used:19,optionalUsed:17}));
+  assert.equal(c.context.reserveGeminiCall('morning').allowed,true);
+  assert.equal(c.context.reserveGeminiCall('morning').allowed,false);
+  assert.equal(c.requests.length,0);
+});
+t('成功キャッシュ: 同じ朝刊/PDFは生成枠を消費せず、別日・別モデルは分離', () => {
+  const c = aiContext([[200,aiOk],[200,aiOk],[200,aiOk]]);
+  assert(c.context.requestGemini({},'morning','same-disclosures'));
+  assert(c.context.requestGemini({},'morning','same-disclosures'));
+  assert.equal(c.requests.length,1);
+  c.props.set('GEMINI_MODEL','another-model');
+  assert(c.context.requestGemini({},'morning','same-disclosures'));
+  assert.equal(c.requests.length,2);
+  c.setTime('2026-11-14T08:30:00+09:00');
+  assert(c.context.requestGemini({},'morning','same-disclosures'));
+  assert.equal(c.requests.length,3);
+});
+t('太平洋時間の夏時間: 夏はJST16時、冬は17時に日次枠切替', () => {
+  const c = aiContext([]);
+  for(const [before,after] of [['2026-07-14T15:59:59+09:00','2026-07-14T16:00:00+09:00'],['2026-11-13T16:59:59+09:00','2026-11-13T17:00:00+09:00']]){
+    c.setTime(before); const first = c.context.geminiUsageStatus().day;
+    c.setTime(after); assert.notEqual(c.context.geminiUsageStatus().day,first);
+  }
+});
+t('診断は既定で生成しない。生成呼び出しの迂回経路がない', () => {
+  const c = aiContext([]);
+  vm.runInContext(fs.readFileSync(path.join(gasDir,'Diagnose.gs'),'utf8'),c.context);
+  c.context.diagnoseGemini(); c.context.diagnoseGeminiGenerate();
+  assert.equal(c.requests.length,0);
+  for(const file of fs.readdirSync(gasDir).filter(name=>name.endsWith('.gs') && name !== 'Gemini.gs')){
+    assert(!fs.readFileSync(path.join(gasDir,file),'utf8').includes(':generateContent'),file);
+  }
+});
+
+t('PDF専用上限で止めても場中と朝刊は利用でき、用途別の試行数が残る', () => {
+  const c = aiContext(Array.from({length:6},()=>[200,aiOk]));
+  for(let n=0;n<4;n++) assert(c.context.requestGemini({},'pdf'));
+  assert.equal(c.context.extractRevision('https://example.com/file.pdf'),null);
+  assert(c.context.requestGemini({},'intraday'));
+  assert(c.context.requestGemini({},'morning'));
+  assert.equal(c.context.geminiUsageStatus().byPurpose.pdf,4);
+  assert.equal(c.requests.length,6);
+});
+t('リセット境界をまたいだ古い日次429は翌日の枠を止めない', () => {
+  const c = aiContext([]);
+  const ticket = c.context.reserveGeminiCall('morning');
+  c.setTime('2026-11-13T17:00:00+09:00');
+  c.context.recordGeminiRateLimit({daily:true,waitMs:3600000},ticket.day);
+  assert.equal(c.context.geminiUsageStatus().dailyBlocked,false);
+  assert.equal(c.context.reserveGeminiCall('intraday').allowed,true);
+});
+t('PDFの実経路も共通台帳・ヘッダー認証を使い、成功後はPDF取得ごとキャッシュ', () => {
+  const c = aiContext([]);
+  const urls = [];
+  c.context.UrlFetchApp.fetch = (url, options) => {
+    urls.push(url);
+    if(url === 'https://example.com/file.pdf') return {getBlob:()=>({getBytes:()=>[1,2,3]})};
+    assert.equal(options.headers['x-goog-api-key'],'test-secret');
+    assert(!url.includes('key='));
+    return {getResponseCode:()=>200,getContentText:()=>JSON.stringify({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({is_revision:true,op_old:100,op_new:120})}]}}]})};
+  };
+  assert.equal(c.context.extractRevision('https://example.com/file.pdf').pct,20);
+  assert.equal(c.context.extractRevision('https://example.com/file.pdf').pct,20);
+  assert.equal(urls.length,2); // PDFと生成を各1回のみ
+  assert.equal(c.context.geminiUsageStatus().byPurpose.pdf,1);
+});
+t('診断・トランスポート失敗を含め20件上限以上は送信しない', () => {
+  const c = aiContext(Array.from({length:30},()=>new Error('network')));
+  vm.runInContext('CONFIG.GEMINI_DIAGNOSTIC_GENERATE = true', c.context);
+  for(let n=0;n<20;n++) c.context.requestGemini({},'diagnostic');
+  assert.equal(c.requests.length,17);
+  c.context.requestGemini({},'morning');
+  c.context.requestGemini({},'morning');
+  assert.equal(c.requests.length,20);
+  assert.equal(c.context.geminiUsageStatus().used,20);
+});
+
+t('朝刊ではPDF解析よりAI本文を優先し、既定では生成1回だけ', () => {
+  const c = aiContext([[200,aiOk]]);
+  let pdfCalls=0, saved;
+  c.context.fetchTdnet=()=>[{id:'one',company:'会社',code:'1234',title:'業績予想の上方修正',pubdate:new Date('2026-11-12T16:00:00+09:00'),url:'https://example.com/file.pdf'}];
+  c.context.extractRevision=()=>{pdfCalls++;return null;};
+  c.context.getMarketBrief=()=>({}); c.context.buildMarketLines=()=>[];
+  c.context.getTodayEvents=()=>[]; c.context.answerCheck=()=>[];
+  c.context.saveDigest=value=>{saved=value;}; c.context.postDiscord=()=>false;
+  c.context.buildArticle=it=>it; c.context.decideImpact=()=> 'mid'; c.context.saveArticleIfNew=()=>{};
+  c.context.morningDigest();
+  assert.equal(pdfCalls,0); assert.equal(c.requests.length,1);
+  assert.equal(saved.body,'解説\n続き');
+  assert.equal(c.context.geminiUsageStatus().byPurpose.morning,1);
+});
+t('日本時間0時をまたいでも日次超過ブロックは解除しない', () => {
+  const c = aiContext([[429,daily429]]);
+  c.setTime('2026-11-13T23:59:00+09:00');
+  c.context.requestGemini({},'intraday');
+  c.setTime('2026-11-14T00:01:00+09:00');
+  assert.equal(c.context.requestGemini({},'morning'),null);
+  assert.equal(c.requests.length,1);
+  assert.equal(c.context.geminiUsageStatus().dailyBlocked,true);
+});
+t('全GASファイルの構文を検証', () => {
+  for(const file of fs.readdirSync(gasDir).filter(name=>name.endsWith('.gs'))){
+    new vm.Script(fs.readFileSync(path.join(gasDir,file),'utf8'),{filename:file});
+  }
+});
+
+t('ロックサービス自体の例外でも生成せず、呼び出し元の一覧フォールバックを返す', () => {
+  const c = aiContext([]);
+  c.context.LockService.getScriptLock = () => { throw new Error('lock service unavailable'); };
+  assert.equal(c.context.callAi('入力','一覧','morning'),'一覧');
+  assert.equal(c.context.extractRevision('https://example.com/file.pdf'),null);
+  assert.equal(c.requests.length,0);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
