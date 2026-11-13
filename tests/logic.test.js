@@ -364,5 +364,37 @@ t('大量保有比較fixture: 注目6→3、インパクト大1→1', () => {
   assert.equal(values.filter(v => v === 'high').length, 1);
 });
 
+t('検索とウォッチ: 全角コード・社名・カテゴリ併用・優先順・入力非破壊', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const source = html.split('/* WATCH_LOGIC_START: DOMから独立した検索・保存ロジック */')[1].split('/* WATCH_LOGIC_END */')[0];
+  const context = vm.createContext({});
+  vm.runInContext(source, context);
+  const items = [{code:'1000',company:'会社A',cat:'earnings'}, {code:'200A',company:'会社B',cat:'holding'}];
+  assert.equal(context.filterStockItems(items, '２００Ａ', [], false, 'all')[0].code, '200A');
+  assert.equal(context.filterStockItems(items, '会社A', [], false, 'all').length, 1);
+  assert.equal(context.filterStockItems(items, '', [{code:'200A'}], false, 'all')[0].code, '200A');
+  assert.equal(context.filterStockItems(items, '', [{code:'200A'}], true, 'earnings').length, 0);
+  assert.equal(items[0].code, '1000');
+  assert.equal(context.readWatchlist({getItem:()=>'{bad'}).length, 0);
+  assert.equal(context.readWatchlist({getItem:()=>JSON.stringify([{code:'２００Ａ'}, {code:'200A'}, {code:'<bad>'}])}).length, 1);
+  assert.equal(context.writeWatchlist({setItem:()=>{throw new Error('quota');}}, []), false);
+});
+
+t('Webスクリプトの構文、免責フッター、旧朝刊データの互換', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+  new vm.Script(script);
+  assert(html.includes('<footer>') && html.includes('</footer>'));
+  const context = vm.createContext({});
+  vm.runInContext(fs.readFileSync(path.join(gasDir, 'Store.gs'), 'utf8'), context);
+  context.getSheet = () => ({getLastRow:()=>2, getRange:()=>({getValues:()=>[[0,'日付','見出し','本文',180,'[]','[]','[]']]})});
+  assert.equal(context.getLatestDigest().more.length, 0);
+});
+t('APIはlowをmidへ変換しない', () => {
+  const context = vm.createContext({fmtYmd:()=> '2026-11-13'});
+  vm.runInContext(fs.readFileSync(path.join(gasDir, 'Api.gs'), 'utf8'), context);
+  assert.equal(context.toApiItem({date:'2026-11-13',time:'10:00',impact:'low'}).impact, 'low');
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

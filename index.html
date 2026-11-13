@@ -236,6 +236,12 @@ footer{
   body{font-size:15.5px}
   .masthead{font-size:26px}
 }
+.stock-tools{margin:0 0 18px;padding:14px;background:var(--paper,#fff);border:1px solid var(--line,#ddd);border-radius:12px}
+.stock-tools input{width:100%;min-height:44px;padding:10px;border:1px solid var(--line,#ddd);border-radius:8px;font:inherit;box-sizing:border-box}
+.stock-tools button,.watch-btn{min-height:44px;padding:8px 12px;border:1px solid var(--line,#ddd);border-radius:8px;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.watch-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.watch-actions button[aria-pressed="true"]{background:#E8EFFA;color:#214D8A}
+#watch-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}#watch-status,.search-help{font-size:12px;color:var(--sub);margin:8px 0}
+.badge.low{color:var(--sub);background:#f1f3f7}details summary{cursor:pointer;min-height:44px;padding-top:12px}#digest-more-list{padding-left:20px}
 </style>
 </head>
 <body>
@@ -259,6 +265,17 @@ footer{
 <main>
   <!-- ===== ホーム ===== -->
   <div id="view-home">
+    <section class="stock-tools" aria-label="銘柄検索とウォッチリスト">
+      <label for="stock-search">社名・銘柄コードで検索</label>
+      <input id="stock-search" type="search" placeholder="例：トヨタ、7203" maxlength="80" autocomplete="off">
+      <p class="search-help">取得済みの直近速報を検索します。ウォッチ登録は銘柄コードでも追加できます。</p>
+      <div class="watch-actions">
+        <button id="watch-add" type="button">検索中の銘柄を登録</button>
+        <button id="watch-only" type="button" aria-pressed="false">ウォッチのみ</button>
+      </div>
+      <div id="watch-list" aria-label="登録銘柄"></div>
+      <p id="watch-status" role="status" aria-live="polite"></p>
+    </section>
     <section class="digest" id="digest" hidden>
       <div class="eyebrow">MORNING DIGEST ── 朝刊</div>
       <h1 id="digest-title"></h1>
@@ -317,8 +334,8 @@ const API_URL = "https://script.google.com/macros/s/AKfycbwQKAI3QM4YLl5EHEudqC56
 const SAMPLE = {
   digest: {
     date: "7月13日(月)",
-    title: "決算修正が相次ぐ、半導体関連に資金流入",
-    body: "前日引け後は業績上方修正の開示が目立ち、円安進行を追い風に輸出関連の採算改善が相次いだ。半導体製造装置の受注回復を示す開示もあり、本日はハイテク主導の展開となりそうだ。\n\n・サンプル電機(6501) 通期営業益を12%上方修正。円安と北米データセンター向けが牽引したとみられる。\n・テスト商事(8001) 500億円を上限とする自己株式取得を発表。発行済株式の3.2%に相当し、需給の下支え要因。\n・デモ製薬(4502) 米社と抗がん剤領域で業務提携。開発費負担の軽減が中期的な利益率改善につながるとみられる。",
+    title: "決算修正が相次ぐ、注目開示を確認",
+    body: "前日引け後は業績上方修正の開示が目立ち、円安進行を追い風に輸出関連の採算改善が相次いだ。半導体製造装置の受注回復を示す開示もあり、個別の条件は開示原文で確認したい。\n\n・サンプル電機(6501) 通期営業益を12%上方修正。円安と北米データセンター向けが牽引したとみられる。\n・テスト商事(8001) 500億円を上限とする自己株式取得を発表。発行済株式の3.2%に相当し、需給の下支え要因。\n・デモ製薬(4502) 米社と抗がん剤領域で業務提携。開発費負担の軽減が中期的な利益率改善につながるとみられる。",
     count: 34,
     marketLines: [
       "S&P500 6,930(+0.8%)",
@@ -435,6 +452,7 @@ function itemHtml(it){
         <span class="company">${esc(it.company)}</span>
         <span class="badge ${badgeCls}">${badgeTxt}</span>
         ${isHolding ? `<span class="badge holding">5%ルール</span>` : ""}
+        <button class="watch-btn" data-watch="${esc(it.code)}" data-company="${esc(it.company)}" aria-pressed="${WATCHES.some(w => w.code === normalizeStockCode(it.code))}">${WATCHES.some(w => w.code === normalizeStockCode(it.code)) ? '★ 登録済み' : '☆ ウォッチ'}</button>
         ${revBadge(it)}
       </div>
       <div class="title">${esc(it.title)}</div>
@@ -460,16 +478,64 @@ function renderList(listEl, noticeEl, items, emptyMsg){
   }
 }
 
+/* WATCH_LOGIC_START: DOMから独立した検索・保存ロジック */
+const WATCH_KEY = 'kabusoku.watchlist.v1';
+function normalizeStockCode(value){
+  return String(value || '').normalize('NFKC').trim().toUpperCase().replace(/\.T$/, '');
+}
+function validStockCode(code){ return /^[0-9][0-9A-Z]{3}$/.test(code); }
+function cleanWatchlist(value){
+  if(!Array.isArray(value)) return [];
+  const result = new Map();
+  for(const item of value){
+    const code = normalizeStockCode(item && item.code);
+    if(validStockCode(code) && !result.has(code)) result.set(code, {code, company: String(item.company || '社名未取得').slice(0,80)});
+    if(result.size >= 100) break;
+  }
+  return [...result.values()];
+}
+function readWatchlist(storage){
+  try { return cleanWatchlist(JSON.parse(storage.getItem(WATCH_KEY) || '[]')); } catch(e) { return []; }
+}
+function writeWatchlist(storage, value){
+  try { storage.setItem(WATCH_KEY, JSON.stringify(cleanWatchlist(value))); return true; } catch(e) { return false; }
+}
+function filterStockItems(items, query, watches, only, filter){
+  const needle = String(query || '').normalize('NFKC').trim().toLowerCase();
+  const codes = new Set(watches.map(w => w.code));
+  return items.filter(it =>
+    (!needle || normalizeStockCode(it.code).toLowerCase().includes(needle) || String(it.company || '').normalize('NFKC').toLowerCase().includes(needle)) &&
+    (!only || codes.has(normalizeStockCode(it.code))) &&
+    (filter === 'all' || (filter === 'high' ? it.impact === 'high' : it.cat === filter))
+  ).slice().sort((a,b) => Number(codes.has(normalizeStockCode(b.code))) - Number(codes.has(normalizeStockCode(a.code))));
+}
+/* WATCH_LOGIC_END */
+let WATCHES = [];
+let storageAvailable = true;
+try { WATCHES = readWatchlist(window.localStorage); } catch(e) { storageAvailable = false; }
+let watchOnly = false;
+function drawWatches(){
+  document.getElementById('watch-list').innerHTML = WATCHES.map(w => `<button type="button" data-watch="${esc(w.code)}" data-company="${esc(w.company)}" aria-label="${esc(w.company)} ${esc(w.code)}を登録解除">★ ${esc(w.company)}(${esc(w.code)}) ×</button>`).join('');
+}
+function toggleWatch(code, company){
+  code = normalizeStockCode(code);
+  if(!validStockCode(code)) return;
+  const present = WATCHES.some(w => w.code === code);
+  if(!present && WATCHES.length >= 100){ document.getElementById('watch-status').textContent = '登録上限は100銘柄です。'; return; }
+  WATCHES = present ? WATCHES.filter(w => w.code !== code) : [...WATCHES, {code, company: company || '社名未取得'}];
+  try { storageAvailable = writeWatchlist(window.localStorage, WATCHES); } catch(e) { storageAvailable = false; }
+  document.getElementById('watch-status').textContent = storageAvailable ? `${WATCHES.length}銘柄をこのブラウザに保存。登録銘柄の速報を先に表示します。` : '保存できないため、この画面を開いている間だけ登録を保持します。';
+  drawWatches();
+  if(DATA) render(currentFilter);
+}
+
 /* ---------- ホーム描画 ---------- */
 let DATA = null;
 let currentFilter = "all";
 
 function render(filter){
   currentFilter = filter;
-  const items = (DATA.items || []).filter(it =>
-    filter === "all" ? true :
-    filter === "high" ? it.impact === "high" : it.cat === filter
-  );
+  const items = filterStockItems(DATA.items || [], document.getElementById('stock-search').value, WATCHES, watchOnly, filter);
   renderList(
     document.getElementById("timeline"),
     document.getElementById("notice"),
@@ -638,8 +704,8 @@ function buildContext(items){
     else if(r.revPct < 0 && up === 0) down++;
     else break;
   }
-  if(up >= 2) return `${up}回連続の上方修正 — 会社計画の保守性が続いているとみられる`;
-  if(down >= 2) return `${down}回連続の下方修正 — 業績モメンタムに注意`;
+  if(up >= 2) return `${up}回連続の上方修正`;
+  if(down >= 2) return `${down}回連続の下方修正`;
   if(revs.length === 1) return revs[0].revPct > 0 ? "直近開示で上方修正" : "直近開示で下方修正";
   const ups = revs.filter(r=>r.revPct>0).length;
   return `保存済みの業績修正${revs.length}件中、上方${ups}件・下方${revs.length-ups}件`;
@@ -671,6 +737,8 @@ document.getElementById("chips").addEventListener("click", e=>{
 });
 
 document.addEventListener("click", e=>{
+  const watchBtn = e.target.closest('[data-watch]');
+  if(watchBtn){ toggleWatch(watchBtn.dataset.watch, watchBtn.dataset.company); return; }
   const codeBtn = e.target.closest("[data-code]");
   if(codeBtn){ location.hash = `#/stock/${codeBtn.dataset.code}`; }
 });
@@ -679,6 +747,30 @@ document.getElementById("back-btn").addEventListener("click", ()=>{ location.has
 const mast = document.getElementById("masthead");
 mast.addEventListener("click", ()=>{ location.hash = ""; });
 mast.addEventListener("keydown", e=>{ if(e.key==="Enter") location.hash = ""; });
+
+document.getElementById('stock-search').addEventListener('input', () => { if(DATA) render(currentFilter); });
+document.getElementById('watch-only').addEventListener('click', e => {
+  watchOnly = !watchOnly;
+  e.currentTarget.setAttribute('aria-pressed', String(watchOnly));
+  if(DATA) render(currentFilter);
+});
+document.getElementById('watch-add').addEventListener('click', () => {
+  const query = document.getElementById('stock-search').value.trim();
+  const code = normalizeStockCode(query);
+  const items = DATA ? DATA.items || [] : [];
+  if(validStockCode(code)){
+    const found = items.find(it => normalizeStockCode(it.code) === code);
+    if(WATCHES.some(w => w.code === code)){ document.getElementById('watch-status').textContent = 'この銘柄は登録済みです。'; return; }
+    toggleWatch(code, found && found.company);
+    return;
+  }
+  const matches = [...new Map(filterStockItems(items, query, [], false, 'all').map(it => [it.code, it])).values()];
+  if(query && matches.length === 1){
+    if(!WATCHES.some(w => w.code === matches[0].code)) toggleWatch(matches[0].code, matches[0].company);
+  }else document.getElementById('watch-status').textContent = '銘柄コードを入力するか、検索結果の「ウォッチ」を押してください。';
+});
+drawWatches();
+if(!storageAvailable) document.getElementById('watch-status').textContent = 'ブラウザ保存を利用できません。登録はこの画面を開いている間だけ有効です。';
 
 /* ---------- 起動 ---------- */
 async function boot(){
