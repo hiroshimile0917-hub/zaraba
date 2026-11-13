@@ -73,7 +73,7 @@ GASの時間トリガーは「8時台のどこか」で±1時間ズレます。�
 | 信用残(週末残高) | **J-Quants** weekly_margin_interest | なし(非表示) | 0円(加入済) |
 | 空売り残高報告 | **J-Quants** short_selling_positions | なし(非表示) | 0円(加入済) |
 | 日銀/FOMC/CPI/SQ | 公表済み年間日程(静的)+SQは計算 | — | 0円 |
-| AI解説 | Gemini 2.5 Flash 無料枠 | — | 0円 |
+| AI解説 | Gemini Flash 無料枠（既定 gemini-flash-latest） | — | 0円 |
 | 配信/ホスティング | Discord Webhook / GitHub Pages | — | 0円 |
 
 ※J-Quantsスタンダードは既加入のため追加コスト0円。本システム自体のランニングは引き続き月0円。
