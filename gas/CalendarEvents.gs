@@ -92,9 +92,8 @@ function getTodayEvents(now) {
   try { earnings = jqAnnouncementByDate(ymd); } catch (e) { earnings = null; }
   if (earnings == null) earnings = earningsByDate(ymd);
   if (earnings.length > 0) {
-    const names = earnings.slice(0, 8).map(e => `${e.company}(${e.code})`).join('、');
-    const more = earnings.length > 8 ? ` ほか${earnings.length - 8}社` : '';
-    events.push({ type: 'earnings', label: `決算発表: ${names}${more}` });
+    const overview = buildEarningsOverview(earnings, loadCompanyDirectory(ymd), loadEarningsCaps(earnings));
+    events.push({ type: 'earnings', label: overview });
   }
 
   return events;
@@ -164,4 +163,54 @@ function updateEarningsSchedule() {
   } finally {
     Drive.Files.remove(file.id); // 一時ファイル削除
   }
+}
+
+/** 社名・時価総額の取得と表示ロジックを分離。未取得は0として順位付けしない。 */
+function buildEarningsOverview(rows, companies, caps) {
+  const unique = [...new Map(rows.map(row => [row.code, row])).values()];
+  const ranked = unique.map(row => ({ ...row, company: row.company || companies[row.code] || '社名未取得', cap: caps[row.code] }))
+    .filter(row => Number.isFinite(row.cap) && row.cap > 0)
+    .sort((a, b) => b.cap - a.cap || a.code.localeCompare(b.code));
+  const shown = ranked.slice(0, CONFIG.EARNINGS_DISPLAY_LIMIT);
+  const names = shown.map(row => `${row.company}(${row.code})`).join('、');
+  const unknown = unique.length - ranked.length;
+  return `決算発表: ${names || '時価総額データを確認中'} / ほか${unique.length - shown.length}社` +
+    `（取得済み時価総額順${unknown ? '・時価総額未取得' + unknown + '社' : ''}）`;
+}
+
+function loadCompanyDirectory(ymd) {
+  const data = jqGet('/listed/info', { date: ymd });
+  const map = {};
+  for (const row of (data && data.data) || []) {
+    const code = String(row.Code || '').slice(0, 4);
+    const name = row.CoName || row.CompanyName;
+    if (code && name) map[code] = name;
+  }
+  return map;
+}
+
+function loadCapDirectory() {
+  const sh = getSheet('caps');
+  if (sh.getLastRow() < 2) return {};
+  const caps = {};
+  for (const row of sh.getRange(2, 1, sh.getLastRow() - 1, 3).getValues()) {
+    const value = typeof row[1] === 'number' ? row[1] : null;
+    if (value != null && value > 0) caps[String(row[0]).replace(/^'/, '')] = value;
+  }
+  return caps;
+}
+
+/** 予定銘柄だけ補完。GAS実行時間を守り、残った欠損数はUIで明示する。 */
+function loadEarningsCaps(rows) {
+  const caps = loadCapDirectory();
+  const deadline = Date.now() + CONFIG.EARNINGS_CAP_BUDGET_MS;
+  for (const row of rows) {
+    if (Date.now() >= deadline) break;
+    if (caps[row.code] != null) continue;
+    try {
+      const cap = getMarketCapOku(row.code);
+      if (Number.isFinite(cap) && cap > 0) caps[row.code] = cap;
+    } catch (e) { Logger.log('earnings cap unavailable code=' + row.code); }
+  }
+  return caps;
 }

@@ -284,12 +284,12 @@ t('キー未設定はAPIを呼ばない', () => {
 });
 t('開示一覧の見出し・本文に会社、コード、開示、抽出値を保持', () => {
   const body = buildDigestFallback([{ company: 'テスト', code: '1234', title: '上方修正', revision: { text: '営業益+12%' } }]);
-  assert(makeDigestTitle(body).includes('本日の注目開示'));
+  assert(makeDigestTitle(body).includes('今日の3本'));
   assert(body.includes('テスト(1234) 上方修正【営業益+12%】'));
   assert(body.includes('出典: TDnet'));
 });
 
-t('朝刊全体: 180件から最大5件、未来データ除外、AI障害でもWeb保存・Discord本文が残る', () => {
+t('朝刊全体: 180件から最大3件、未来データ除外、AI障害でもWeb保存・Discord本文が残る', () => {
   const c = aiContext(Array.from({ length: 3 }, () => [429, 'quota']));
   const now = new Date('2026-11-13T08:30:00+09:00');
   c.context.Date = class extends Date { constructor(...args) { super(...(args.length ? args : [now.getTime()])); } };
@@ -310,14 +310,14 @@ t('朝刊全体: 180件から最大5件、未来データ除外、AI障害でも
   c.context.decideImpact = () => 'mid';
   c.context.saveArticleIfNew = article => articles.push(article);
   c.context.morningDigest();
-  assert.equal(articles.length, 5);
+  assert.equal(articles.length, 3);
   assert.equal(digests[0].count, 180);
-  assert(digests[0].title.includes('本日の注目開示'));
+  assert(digests[0].title.includes('今日の3本'));
   assert(messages[0].includes('会社0(1234)'));
   assert(messages[0].includes('市況') && messages[0].includes('予定'));
   assert(!messages[0].includes('未来会社'));
   const prompt = JSON.parse(c.requests[0].options.payload).contents[0].parts[0].text;
-  assert.equal((prompt.match(/自己株式取得/g) || []).length, 5);
+  assert.equal((prompt.match(/自己株式取得/g) || []).length, 3);
 });
 
 t('Discord既定OFF: 投稿・診断・疎通でネットワークを呼ばない', () => {
@@ -335,6 +335,12 @@ t('Discord有効化時は既存の送信経路を維持', () => {
   c.context.PropertiesService.getScriptProperties = () => ({ getProperty: () => 'https://discord.com/api/webhooks/test' });
   assert.strictEqual(c.context.postDiscord('test'), true);
   assert.strictEqual(c.requests.length, 1);
+});
+
+t('決算予定: 社名補完・時価総額降順・重複除去・欠損除外', () => {
+  const label = buildEarningsOverview([{ code: '1000' }, { code: '2000', company: '大型社' }, { code: '3000' }, { code: '2000', company: '大型社' }], { '1000': '小型社' }, { '1000': 100, '2000': 900, '3000': null });
+  assert(label.indexOf('大型社(2000)') < label.indexOf('小型社(1000)'));
+  assert(label.includes('ほか1社') && label.includes('未取得1社'));
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
