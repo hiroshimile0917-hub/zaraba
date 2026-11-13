@@ -20,6 +20,7 @@
 
 // ================= 設定 =================
 const CONFIG = {
+  DISCORD_ENABLED: false, // Web運用を優先。再開時だけtrueにする。
   GEMINI_MODEL: 'gemini-flash-latest',
   MORNING_MAX_ITEMS: 5,
   GEMINI_MAX_ATTEMPTS: 3,
@@ -345,6 +346,7 @@ function callAi(prompt, fallback) {
 // ================= 配信 =================
 
 function postDiscord(text) {
+  if (!CONFIG.DISCORD_ENABLED) return false;
   const url = PropertiesService.getScriptProperties().getProperty('DISCORD_WEBHOOK_URL');
   if (!url) {
     Logger.log('postDiscord: DISCORD_WEBHOOK_URL が未設定のため送信スキップ');
