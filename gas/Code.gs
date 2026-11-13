@@ -20,7 +20,10 @@
 
 // ================= 設定 =================
 const CONFIG = {
-  GEMINI_MODEL: 'gemini-2.5-flash',
+  GEMINI_MODEL: 'gemini-flash-latest',
+  MORNING_MAX_ITEMS: 5,
+  GEMINI_MAX_ATTEMPTS: 3,
+  GEMINI_RETRY_MS: 2000,
   PATROL_START_HOUR: 8,       // TDnet巡回開始(時)
   PATROL_END_HOUR: 19,        // TDnet巡回終了(時)。引け後の開示(〜18時台)も保存・配信する
   MAX_ALERTS_PER_RUN: 5,      // 1回の巡回で配信する最大件数
@@ -74,7 +77,7 @@ function morningDigest() {
   from.setDate(from.getDate() - (day === 1 ? 3 : 1)); // 月曜は金曜分から
   from.setHours(15, 30, 0, 0);
 
-  const items = fetchTdnet(200).filter(it => it.pubdate >= from && !isExcluded(it.title));
+  const items = fetchTdnet(200).filter(it => it.pubdate >= from && it.pubdate <= now && !isExcluded(it.title));
 
   // --- マーケット概況(前夜の米市場・為替・前日の日本市場・投資部門別) ---
   let market = null;
@@ -89,7 +92,7 @@ function morningDigest() {
   let top = [];
   if (items.length > 0) {
     const ranked = items.sort((a, b) => scoreTitle(b.title) - scoreTitle(a.title));
-    top = ranked.filter(it => scoreTitle(it.title) > 0).slice(0, 5);
+    top = ranked.filter(it => scoreTitle(it.title) > 0).slice(0, CONFIG.MORNING_MAX_ITEMS);
     if (top.length === 0) top = ranked.slice(0, 3);
 
     // 業績修正は修正率を抽出して解説に反映
@@ -114,7 +117,7 @@ function morningDigest() {
       '【開示一覧】',
       list,
     ].filter(s => s !== '').join('\n');
-    digestBody = callAi(prompt);
+    digestBody = callAi(prompt, buildDigestFallback(top));
   } else {
     digestBody = '昨日引け後からの注目開示はありませんでした。';
   }
@@ -286,22 +289,57 @@ function isExcluded(title) {
 
 // ================= AI(Gemini無料枠) =================
 
-function callAi(prompt) {
-  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.GEMINI_MODEL}:generateContent?key=${key}`;
-  const payload = { contents: [{ parts: [{ text: prompt }] }] };
-  const res = UrlFetchApp.fetch(url, {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true,
-  });
-  if (res.getResponseCode() !== 200) return '(解説の生成に失敗しました)';
-  try {
-    return JSON.parse(res.getContentText()).candidates[0].content.parts[0].text.trim();
-  } catch (e) {
-    return '(解説の生成に失敗しました)';
+/** AI失敗時も、確認済みの開示タイトル・抽出数値だけで朝刊を構成する。 */
+function buildDigestFallback(items) {
+  return ['本日の注目開示（AI解説は取得できませんでした）', ...items.map(it =>
+    `・${it.company}(${it.code}) ${it.title}${it.revision && it.revision.text ? '【' + it.revision.text + '】' : ''}`
+  ), '出典: TDnet（各開示のリンクはタイムラインを参照）'].join('\n');
+}
+
+function callAi(prompt, fallback) {
+  const failed = fallback || '(解説の生成に失敗しました)';
+  const props = PropertiesService.getScriptProperties();
+  const key = props.getProperty('GEMINI_API_KEY');
+  const model = props.getProperty('GEMINI_MODEL') || CONFIG.GEMINI_MODEL;
+  // URLにキーを含めず、例外ログへのキー混入を防ぐ。
+  const redact = value => String(value).split(key || '\u0000').join('[REDACTED]');
+  if (!key) { Logger.log('Gemini: GEMINI_API_KEY 未設定'); return failed; }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  for (let attempt = 1; attempt <= CONFIG.GEMINI_MAX_ATTEMPTS; attempt++) {
+    let retry = false;
+    try {
+      const res = UrlFetchApp.fetch(url, {
+        method: 'post', contentType: 'application/json',
+        headers: { 'x-goog-api-key': key },
+        payload: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+        muteHttpExceptions: true,
+      });
+      const status = res.getResponseCode();
+      const body = res.getContentText();
+      if (status === 200) {
+        try {
+          const data = JSON.parse(body);
+          const candidate = (data.candidates || [])[0];
+          const text = candidate && candidate.content && (candidate.content.parts || [])
+            .filter(part => !part.thought && typeof part.text === 'string')
+            .map(part => part.text).join('\n').trim();
+          if (text && (!candidate.finishReason || candidate.finishReason === 'STOP')) return text;
+          Logger.log(`Gemini model=${model} HTTP 200 invalid/blocked response: ${redact(body)}`);
+        } catch (e) {
+          Logger.log(`Gemini model=${model} HTTP 200 parse error: ${redact(body)}`);
+        }
+        return failed;
+      }
+      Logger.log(`Gemini model=${model} attempt=${attempt} HTTP ${status}: ${redact(body)}`);
+      retry = status === 429 || status >= 500;
+    } catch (e) {
+      Logger.log(`Gemini model=${model} attempt=${attempt} transport error: ${redact(e)}`);
+      retry = true;
+    }
+    if (!retry || attempt === CONFIG.GEMINI_MAX_ATTEMPTS) break;
+    Utilities.sleep(CONFIG.GEMINI_RETRY_MS * Math.pow(2, attempt - 1));
   }
+  return failed;
 }
 
 // ================= 配信 =================

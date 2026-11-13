@@ -224,5 +224,101 @@ t('ダイジェスト見出し切り出し', () => {
   assert.strictEqual(makeDigestTitle('全体観の1行目\n本文'), '全体観の1行目');
 });
 
+// 実ネットワーク・Discord送信なしで失敗経路を検証する。
+console.log('--- Gemini / 朝刊フォールバック ---');
+const vm = require('vm');
+function aiContext(sequence, key = 'test-secret') {
+  const logs = [], sleeps = [], requests = [];
+  const context = vm.createContext({
+    PropertiesService: { getScriptProperties: () => ({ getProperty: name => name === 'GEMINI_API_KEY' ? key : null }) },
+    Logger: { log: message => logs.push(message) },
+    Utilities: { sleep: ms => sleeps.push(ms) },
+    UrlFetchApp: { fetch: (url, options) => {
+      requests.push({ url, options });
+      const next = sequence.shift();
+      if (next instanceof Error) throw next;
+      return { getResponseCode: () => next[0], getContentText: () => next[1] };
+    } },
+  });
+  vm.runInContext(fs.readFileSync(path.join(gasDir, 'Code.gs'), 'utf8'), context);
+  return { context, logs, sleeps, requests };
+}
+const aiOk = JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ thought: true, text: 'internal' }, { text: '解説' }, { text: '続き' }] } }] });
+t('429/503の後に回復、バックオフとモデル・キー送信を確認', () => {
+  const c = aiContext([[429, 'quota'], [503, 'unavailable'], [200, aiOk]]);
+  assert.strictEqual(c.context.callAi('入力', '一覧'), '解説\n続き');
+  assert.deepStrictEqual(c.sleeps, [2000, 4000]);
+  assert(c.logs.some(x => x.includes('HTTP 429') && x.includes('quota')));
+  assert(c.requests[0].url.includes('gemini-flash-latest'));
+  assert(!c.requests[0].url.includes('test-secret'));
+  assert.strictEqual(c.requests[0].options.headers['x-goog-api-key'], 'test-secret');
+});
+t('401/403/404は再試行せずエラー本文を記録、キーは伏字', () => {
+  for (const status of [401, 403, 404]) {
+    const c = aiContext([[status, 'bad test-secret']]);
+    assert.strictEqual(c.context.callAi('入力', '一覧'), '一覧');
+    assert.strictEqual(c.requests.length, 1);
+    assert(c.logs[0].includes(`HTTP ${status}`));
+    assert(!c.logs[0].includes('test-secret'));
+  }
+});
+t('不正JSON/空候補/ブロック/出力打切りで一覧に縮退', () => {
+  for (const body of ['invalid', '{}', '{"promptFeedback":{"blockReason":"SAFETY"}}', JSON.stringify({ candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: '途中' }] } }] })]) {
+    const c = aiContext([[200, body]]);
+    assert.strictEqual(c.context.callAi('入力', '一覧'), '一覧');
+    assert(c.logs[0].includes('HTTP 200'));
+    assert(c.logs[0].includes(body));
+  }
+});
+t('制限継続/通信例外でも3回で終了', () => {
+  for (const sequence of [Array.from({ length: 3 }, () => [429, 'quota']), Array.from({ length: 3 }, () => new Error('network'))]) {
+    const c = aiContext(sequence);
+    assert.strictEqual(c.context.callAi('入力', '一覧'), '一覧');
+    assert.strictEqual(c.requests.length, 3);
+  }
+});
+t('キー未設定はAPIを呼ばない', () => {
+  const c = aiContext([], null);
+  assert.strictEqual(c.context.callAi('入力', '一覧'), '一覧');
+  assert.strictEqual(c.requests.length, 0);
+});
+t('開示一覧の見出し・本文に会社、コード、開示、抽出値を保持', () => {
+  const body = buildDigestFallback([{ company: 'テスト', code: '1234', title: '上方修正', revision: { text: '営業益+12%' } }]);
+  assert(makeDigestTitle(body).includes('本日の注目開示'));
+  assert(body.includes('テスト(1234) 上方修正【営業益+12%】'));
+  assert(body.includes('出典: TDnet'));
+});
+
+t('朝刊全体: 180件から最大5件、未来データ除外、AI障害でもWeb保存・Discord本文が残る', () => {
+  const c = aiContext(Array.from({ length: 3 }, () => [429, 'quota']));
+  const now = new Date('2026-11-13T08:30:00+09:00');
+  c.context.Date = class extends Date { constructor(...args) { super(...(args.length ? args : [now.getTime()])); } };
+  c.context.fetchTdnet = () => [
+    ...Array.from({ length: 180 }, (_, n) => ({ id: String(n), company: '会社' + n, code: '1234', title: '自己株式取得', pubdate: new Date('2026-11-12T16:00:00+09:00'), url: '' })),
+    { company: '未来会社', title: '公開買付', pubdate: new Date('2026-11-14T10:00:00+09:00') },
+  ];
+  c.context.isRevisionTitle = () => false;
+  c.context.getMarketBrief = () => ({});
+  c.context.buildMarketLines = () => ['市況'];
+  c.context.getTodayEvents = () => [{ label: '予定' }];
+  c.context.answerCheck = () => [];
+  c.context.fmtDate = () => '11月13日';
+  const articles = [], messages = [], digests = [];
+  c.context.postDiscord = text => messages.push(text);
+  c.context.saveDigest = digest => digests.push(digest);
+  c.context.buildArticle = it => it;
+  c.context.decideImpact = () => 'mid';
+  c.context.saveArticleIfNew = article => articles.push(article);
+  c.context.morningDigest();
+  assert.equal(articles.length, 5);
+  assert.equal(digests[0].count, 180);
+  assert(digests[0].title.includes('本日の注目開示'));
+  assert(messages[0].includes('会社0(1234)'));
+  assert(messages[0].includes('市況') && messages[0].includes('予定'));
+  assert(!messages[0].includes('未来会社'));
+  const prompt = JSON.parse(c.requests[0].options.payload).contents[0].parts[0].text;
+  assert.equal((prompt.match(/自己株式取得/g) || []).length, 5);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

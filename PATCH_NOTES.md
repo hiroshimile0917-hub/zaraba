@@ -1,3 +1,11 @@
+# PATCH_NOTES — 2026-11-13
+
+- Code.gs: Geminiモデル既定値を文書と統一、プロパティで上書き可能にした。
+- 一時エラーは最大3回再試行。HTTPステータス・エラー本文・パース失敗をログへ記録し、キーを伏せる。
+- AI障害時は注目開示一覧で朝刊を保存・配信。未来の開示は朝刊から除外。
+- tests/logic.test.js: AI異常系と180件の朝刊統合経路を追加。46件通過。
+- GASへ貼り直すのは `gas/Code.gs` のみ。手順・未確認事項はHANDOFF.md参照。
+
 # PATCH_NOTES — 2026-07-13
 
 元の `PATCH_NOTES.md` / `TradingCalendar.gs` がPC上・ZIP内のどこにも見つからなかったため、
