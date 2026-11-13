@@ -26,6 +26,15 @@ const CONFIG = {
   MORNING_MAX_ITEMS: 3,
   EARNINGS_DISPLAY_LIMIT: 8,
   EARNINGS_CAP_BUDGET_MS: 30000,
+  GEMINI_DAILY_LIMIT: 20, // 本番で確認した無料枠。実際のAI Studio上限以下に設定。
+  GEMINI_PDF_DAILY_LIMIT: 4, // PDFだけで場中用の残枠を使い切らない
+  GEMINI_MORNING_RESERVE: 3, // PDF・場中・診断が使えない朝刊用リクエスト数
+  GEMINI_MIN_INTERVAL_MS: 15000, // プロジェクト内の生成間隔（RPM/TPM制限は別途429で尊重）
+  GEMINI_MAX_WAIT_MS: 15000,
+  GEMINI_RATE_COOLDOWN_MS: 60000,
+  GEMINI_CACHE_SECONDS: 21600,
+  GEMINI_DIAGNOSTIC_GENERATE: false,
+  MORNING_AI_PDF: false, // 朝刊生成より先にPDFで無料枠を消費しない
   GEMINI_MAX_ATTEMPTS: 3,
   GEMINI_RETRY_MS: 2000,
   PATROL_START_HOUR: 8,       // TDnet巡回開始(時)
@@ -104,7 +113,7 @@ function morningDigest() {
 
     // 業績修正は修正率を抽出して解説に反映
     for (const it of top) {
-      it.revision = isRevisionTitle(it.title) ? extractRevision(it.url) : null;
+      it.revision = CONFIG.MORNING_AI_PDF && isRevisionTitle(it.title) ? extractRevision(it.url) : null;
     }
     const list = top.map(it => {
       const rev = it.revision && it.revision.text ? `【${it.revision.text}】` : '';
@@ -124,7 +133,7 @@ function morningDigest() {
       '【開示一覧】',
       list,
     ].filter(s => s !== '').join('\n');
-    digestBody = callAi(prompt, buildDigestFallback(top));
+    digestBody = callAi(prompt, buildDigestFallback(top), 'morning', fmtYmd(now) + ':' + top.map(it => it.id || it.title).join('|'));
   } else {
     digestBody = '昨日引け後からの注目開示はありませんでした。';
   }
@@ -238,7 +247,7 @@ function processDisclosure(it) {
       `開示時刻: ${fmtTime(it.pubdate)}`,
     ].filter(Boolean).join('\n');
 
-    const summary = callAi(prompt);
+    const summary = callAi(prompt, `${it.company}(${it.code}) ${it.title}\nAI解説は取得できませんでした。詳細は開示原文をご確認ください。`, 'intraday');
     article.summary = summary;
     const badge = impact === 'high' ? '🚨' : '🔔';
     postDiscord(`${badge} **${it.company}(${it.code})** ${fmtTime(it.pubdate)}\n${it.title}${revLine}\n\n${summary}\n${it.url || ''}`);
@@ -311,50 +320,9 @@ function disclosureRelevance(title) {
   return '事業・資本関係の変化を確認する材料です。条件の詳細は開示原文をご確認ください。';
 }
 
-function callAi(prompt, fallback) {
-  const failed = fallback || '(解説の生成に失敗しました)';
-  const props = PropertiesService.getScriptProperties();
-  const key = props.getProperty('GEMINI_API_KEY');
-  const model = props.getProperty('GEMINI_MODEL') || CONFIG.GEMINI_MODEL;
-  // URLにキーを含めず、例外ログへのキー混入を防ぐ。
-  const redact = value => String(value).split(key || '\u0000').join('[REDACTED]');
-  if (!key) { Logger.log('Gemini: GEMINI_API_KEY 未設定'); return failed; }
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-  for (let attempt = 1; attempt <= CONFIG.GEMINI_MAX_ATTEMPTS; attempt++) {
-    let retry = false;
-    try {
-      const res = UrlFetchApp.fetch(url, {
-        method: 'post', contentType: 'application/json',
-        headers: { 'x-goog-api-key': key },
-        payload: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        muteHttpExceptions: true,
-      });
-      const status = res.getResponseCode();
-      const body = res.getContentText();
-      if (status === 200) {
-        try {
-          const data = JSON.parse(body);
-          const candidate = (data.candidates || [])[0];
-          const text = candidate && candidate.content && (candidate.content.parts || [])
-            .filter(part => !part.thought && typeof part.text === 'string')
-            .map(part => part.text).join('\n').trim();
-          if (text && (!candidate.finishReason || candidate.finishReason === 'STOP')) return text;
-          Logger.log(`Gemini model=${model} HTTP 200 invalid/blocked response: ${redact(body)}`);
-        } catch (e) {
-          Logger.log(`Gemini model=${model} HTTP 200 parse error: ${redact(body)}`);
-        }
-        return failed;
-      }
-      Logger.log(`Gemini model=${model} attempt=${attempt} HTTP ${status}: ${redact(body)}`);
-      retry = status === 429 || status >= 500;
-    } catch (e) {
-      Logger.log(`Gemini model=${model} attempt=${attempt} transport error: ${redact(e)}`);
-      retry = true;
-    }
-    if (!retry || attempt === CONFIG.GEMINI_MAX_ATTEMPTS) break;
-    Utilities.sleep(CONFIG.GEMINI_RETRY_MS * Math.pow(2, attempt - 1));
-  }
-  return failed;
+function callAi(prompt, fallback, purpose, cacheId) {
+  return requestGemini({ contents: [{ parts: [{ text: prompt }] }] }, purpose || 'intraday', cacheId)
+    || fallback || '(解説の生成に失敗しました)';
 }
 
 // ================= 配信 =================

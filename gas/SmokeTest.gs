@@ -28,8 +28,10 @@ function smokeTest() {
   } catch (e) { ng('TDnet取得', String(e)); }
 
   // 3. Gemini
-  try {
-    const r = callAi('「テスト」と3文字だけ返してください。');
+  if (!CONFIG.GEMINI_DIAGNOSTIC_GENERATE) {
+    skip('Gemini生成', '診断生成は既定OFF。geminiUsageStatusで残枠確認');
+  } else try {
+    const r = callAi('「テスト」と3文字だけ返してください。', '生成失敗またはスキップ', 'diagnostic');
     r && !r.includes('失敗') ? ok('Gemini応答', r.slice(0, 20)) : ng('Gemini応答', r);
   } catch (e) { ng('Gemini応答', String(e)); }
 
