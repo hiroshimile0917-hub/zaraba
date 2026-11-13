@@ -320,5 +320,22 @@ t('朝刊全体: 180件から最大5件、未来データ除外、AI障害でも
   assert.equal((prompt.match(/自己株式取得/g) || []).length, 5);
 });
 
+t('Discord既定OFF: 投稿・診断・疎通でネットワークを呼ばない', () => {
+  const c = aiContext([]);
+  vm.runInContext(fs.readFileSync(path.join(gasDir, 'Verify.gs'), 'utf8'), c.context);
+  assert.strictEqual(c.context.postDiscord('test'), false);
+  assert(c.context.diagnoseDiscord().includes('スキップ'));
+  assert(c.context.smokeTestDiscord().includes('スキップ'));
+  assert.strictEqual(c.requests.length, 0);
+  assert(!c.context.checkSecrets().includes('DISCORD_WEBHOOK_URL(未設定・必須)'));
+});
+t('Discord有効化時は既存の送信経路を維持', () => {
+  const c = aiContext([[204, '']]);
+  vm.runInContext('CONFIG.DISCORD_ENABLED = true', c.context);
+  c.context.PropertiesService.getScriptProperties = () => ({ getProperty: () => 'https://discord.com/api/webhooks/test' });
+  assert.strictEqual(c.context.postDiscord('test'), true);
+  assert.strictEqual(c.requests.length, 1);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

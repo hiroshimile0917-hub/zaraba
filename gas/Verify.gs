@@ -20,7 +20,7 @@
  */
 function checkSecrets() {
   const P = PropertiesService.getScriptProperties();
-  const required = ['DISCORD_WEBHOOK_URL', 'GEMINI_API_KEY'];
+  const required = CONFIG.DISCORD_ENABLED ? ['DISCORD_WEBHOOK_URL', 'GEMINI_API_KEY'] : ['GEMINI_API_KEY'];
   const optional = ['EDINET_API_KEY', 'JQUANTS_MAIL', 'JQUANTS_PASSWORD', 'CRON_TOKEN'];
   const log = ['— シークレット反映状況(値は非表示)—'];
   const line = (k, req) => {
@@ -49,6 +49,7 @@ function checkSecrets() {
  * @return {string} 判定結果(実行ログにも出力)
  */
 function diagnoseDiscord() {
+  if (!CONFIG.DISCORD_ENABLED) return _emit(['Discord配信停止中: 診断をスキップ']);
   const log = [];
   const P = PropertiesService.getScriptProperties();
   const url = P.getProperty('DISCORD_WEBHOOK_URL');
@@ -119,6 +120,7 @@ function diagnoseDiscord() {
  * @return {string} 判定結果(実行ログにも出力)
  */
 function smokeTestDiscord() {
+  if (!CONFIG.DISCORD_ENABLED) return _emit(['Discord配信停止中: 送信テストをスキップ']);
   const url = PropertiesService.getScriptProperties().getProperty('DISCORD_WEBHOOK_URL');
   if (!url) {
     return _emit(['❌ DISCORD_WEBHOOK_URL 未設定。先に diagnoseDiscord() を実行してください。']);
