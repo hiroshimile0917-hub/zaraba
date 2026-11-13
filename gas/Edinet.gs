@@ -63,7 +63,7 @@ function processHoldingReport(d, key) {
 
   const isActivist = ACTIVIST_WATCHLIST.some(w =>
     filer.toUpperCase().includes(w.toUpperCase()));
-  const impact = isActivist ? 'high' : 'mid';
+  const impact = holdingImpact(detail, isActivist, !isChange);
 
   let ratioText = '';
   if (detail.ratio != null && detail.prevRatio != null) {
@@ -153,4 +153,15 @@ function parseIssuerFromDescription(desc) {
   // docDescription例: "大量保有報告書(株式会社〇〇)" 等から発行者を推定
   const m = String(desc || '').match(/[((]([^))]+)[))]/);
   return m ? m[1] : null;
+}
+
+/** 保有割合は百分率。欠損をゼロとみなさず、未判定は通常表示にする。 */
+function holdingImpact(detail, activist, initialReport) {
+  if (activist) return 'high';
+  const current = detail.ratio;
+  const previous = detail.prevRatio;
+  if (!Number.isFinite(current)) return 'low';
+  if (current >= 5 && (initialReport || (Number.isFinite(previous) && previous < 5))) return 'mid';
+  if (Number.isFinite(previous) && Math.abs(current - previous) + 1e-9 >= CONFIG.HOLDING_MIN_CHANGE_PP) return 'mid';
+  return 'low';
 }

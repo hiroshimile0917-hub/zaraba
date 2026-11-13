@@ -20,6 +20,7 @@
 
 // ================= 設定 =================
 const CONFIG = {
+  HOLDING_MIN_CHANGE_PP: 1, // 相対変化率でなく保有割合のポイント差
   DISCORD_ENABLED: false, // Web運用を優先。再開時だけtrueにする。
   GEMINI_MODEL: 'gemini-flash-latest',
   MORNING_MAX_ITEMS: 3,

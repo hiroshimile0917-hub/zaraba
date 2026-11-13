@@ -424,8 +424,8 @@ function revBadge(it){
 
 function itemHtml(it){
   const isHolding = it.cat === "holding";
-  const badgeCls = it.impact === "high" ? "high" : "mid";
-  const badgeTxt = it.impact === "high" ? "インパクト大" : "注目";
+  const badgeCls = it.impact === "high" ? "high" : it.impact === "mid" ? "mid" : "low";
+  const badgeTxt = it.impact === "high" ? "インパクト大" : it.impact === "mid" ? "注目" : "通常";
   return `
     <span class="time mono">${esc(it.time)}</span>
     <span class="dot" aria-hidden="true"></span>
