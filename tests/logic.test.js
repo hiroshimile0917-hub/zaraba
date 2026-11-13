@@ -343,5 +343,26 @@ t('決算予定: 社名補完・時価総額降順・重複除去・欠損除外
   assert(label.includes('ほか1社') && label.includes('未取得1社'));
 });
 
+t('大量保有: 微小増減・ゼロ差・欠損は通常、1ポイント以上と新規5%は注目', () => {
+  for (const detail of [{ ratio: 18.75, prevRatio: 18.43 }, { ratio: 6, prevRatio: 6 }, { ratio: 6, prevRatio: null }, { ratio: null, prevRatio: 6 }]) assert.equal(holdingImpact(detail, false, false), 'low');
+  for (const detail of [{ ratio: 6, prevRatio: 5 }, { ratio: 5, prevRatio: 6 }, { ratio: 5.1, prevRatio: 4.9 }]) assert.equal(holdingImpact(detail, false, false), 'mid');
+  assert.equal(holdingImpact({ ratio: 5.1 }, false, true), 'mid');
+  assert.equal(holdingImpact({}, true, false), 'high');
+});
+t('大量保有比較fixture: 注目6→3、インパクト大1→1', () => {
+  const fixture = [
+    [{ ratio: 18.75, prevRatio: 18.43 }, false, false],
+    [{ ratio: 6, prevRatio: 6 }, false, false],
+    [{ ratio: 6 }, false, false],
+    [{ ratio: 6, prevRatio: 5 }, false, false],
+    [{ ratio: 5, prevRatio: 7 }, false, false],
+    [{ ratio: 5.1 }, false, true],
+    [{ ratio: 6, prevRatio: 6 }, true, false],
+  ];
+  const values = fixture.map(args => holdingImpact(...args));
+  assert.equal(values.filter(v => v === 'mid').length, 3);
+  assert.equal(values.filter(v => v === 'high').length, 1);
+});
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

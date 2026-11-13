@@ -56,7 +56,7 @@ function toApiItem(a) {
     date: a.date,
     code: a.code,
     company: a.company,
-    impact: a.impact === 'low' ? 'mid' : a.impact, // フロントはhigh/midの2段階表示
+    impact: a.impact, // lowを注目へ格上げしない
     cat: a.cat,
     title: a.title,
     summary: a.summary,
