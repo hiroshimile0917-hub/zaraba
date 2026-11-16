@@ -304,7 +304,8 @@ t('キー未設定はAPIを呼ばない', () => {
 t('開示一覧の見出し・本文に会社、コード、開示、抽出値を保持', () => {
   const body = buildDigestFallback([{ company: 'テスト', code: '1234', title: '上方修正', revision: { text: '営業益+12%' } }]);
   assert(makeDigestTitle(body).includes('今日の3本'));
-  assert(body.includes('テスト(1234) 上方修正【営業益+12%】'));
+  assert(body.includes('テスト(1234)'));
+  assert(body.includes('開示事実（タイトル原文）: 上方修正【営業益+12%】'));
   assert(body.includes('出典: TDnet'));
 });
 
@@ -554,7 +555,8 @@ t('診断・トランスポート失敗を含め20件上限以上は送信しな
 });
 
 t('朝刊ではPDF解析よりAI本文を優先し、既定では生成1回だけ', () => {
-  const c = aiContext([[200,aiOk]]);
+  const response = JSON.stringify({candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify({items:[{id:'1',code:'1234',relation:'earnings'}]})}]}}]});
+  const c = aiContext([[200,response]]);
   let pdfCalls=0, saved;
   c.context.fetchTdnet=()=>[{id:'one',company:'会社',code:'1234',title:'業績予想の上方修正',pubdate:new Date('2026-11-12T16:00:00+09:00'),url:'https://example.com/file.pdf'}];
   c.context.extractRevision=()=>{pdfCalls++;return null;};
@@ -564,7 +566,9 @@ t('朝刊ではPDF解析よりAI本文を優先し、既定では生成1回だ�
   c.context.buildArticle=it=>it; c.context.decideImpact=()=> 'mid'; c.context.saveArticleIfNew=()=>{};
   c.context.morningDigest();
   assert.equal(pdfCalls,0); assert.equal(c.requests.length,1);
-  assert.equal(saved.body,'解説\n続き');
+  assert(saved.body.includes('開示事実（タイトル原文）: 業績予想の上方修正'));
+  assert(saved.body.includes('企業の収益力を評価するための材料'));
+  assert(!saved.body.includes('開示一覧'));
   assert.equal(c.context.geminiUsageStatus().byPurpose.morning,1);
 });
 t('日本時間0時をまたいでも日次超過ブロックは解除しない', () => {
@@ -588,6 +592,103 @@ t('ロックサービス自体の例外でも生成せず、呼び出し元の�
   assert.equal(c.context.callAi('入力','一覧','morning'),'一覧');
   assert.equal(c.context.extractRevision('https://example.com/file.pdf'),null);
   assert.equal(c.requests.length,0);
+});
+
+console.log('--- 朝刊の事実限定ポリシー ---');
+const editorialItems = [
+  {id:'a',company:'ニレコ',code:'6863',title:'業績予想の上方修正および期末配当予想の修正'},
+  {id:'b',company:'エクシオHD',code:'362A',title:'特別利益および特別損失の計上'},
+  {id:'c',company:'海帆',code:'3133',title:'営業外費用および特別損益の計上'},
+];
+const approvedSelection = JSON.stringify({items:editorialItems.map((item,index)=>({id:String(index+1),code:item.code,relation:'earnings'}))});
+function editorialResponse(text){return JSON.stringify({candidates:[{finishReason:'STOP',content:{parts:[{text}]}}]});}
+t('実際に残った地合い予想・その言い換え・英語・不可視文字を含む自由記述を拒否', () => {
+  for(const text of [
+    '本日の東京市場は米株安の流れを受けた慎重な立ち上がりが想定されます。',
+    'ハイテク主導の展開となりそうだ。', '買い優勢で寄り付く可能性がある。',
+    '株価は上がるとは断定できないが上昇への期待がある。',
+    'Stocks may rally today.', '株\u200b価上昇が期\u200b待される。',
+  ]) assert.equal(validateMorningSelection(text,editorialItems).ok,false,text);
+});
+t('JSONでも任意の解説・市況・fact・株価予想を追加した応答は全体を拒否', () => {
+  const valid = JSON.parse(approvedSelection);
+  assert.equal(validateMorningSelection(JSON.stringify({...valid,market:'慎重な立ち上がりが想定される'}),editorialItems).ok,false);
+  for(const field of ['fact','body','summary','background','forecast']){
+    const data = JSON.parse(approvedSelection); data.items[0][field]='上昇が期待される';
+    assert.equal(validateMorningSelection(JSON.stringify(data),editorialItems).ok,false,field);
+  }
+  for(const relation of ['上昇が期待される','BUY','__proto__','earnings 上昇','corporate']){
+    const data = JSON.parse(approvedSelection); data.items[0].relation=relation;
+    assert.equal(validateMorningSelection(JSON.stringify(data),editorialItems).ok,false,relation);
+  }
+});
+t('欠落・重複・別コード・不正ID・追加銘柄・非JSONを拒否', () => {
+  const cases = [null, [], {}, {items:[]}, {items:[{id:'1',code:'6863',relation:'earnings'}]}];
+  const duplicate=JSON.parse(approvedSelection); duplicate.items[1]=duplicate.items[0]; cases.push(duplicate);
+  for(const change of [{code:'9999'},{id:'0'},{id:'4'},{id:'１'},{id:1}]){
+    const data=JSON.parse(approvedSelection); Object.assign(data.items[0],change); cases.push(data);
+  }
+  const extra=JSON.parse(approvedSelection); extra.items.push({id:'4',code:'9999',relation:'other'}); cases.push(extra);
+  for(const data of cases) assert.equal(validateMorningSelection(JSON.stringify(data),editorialItems).ok,false);
+  assert.equal(validateMorningSelection('```json\n'+approvedSelection+'\n```',editorialItems).ok,false);
+});
+t('業績予想・上方修正などの正当な開示事実を保持し、AIの自由記述を表示しない', () => {
+  const result=validateMorningSelection(approvedSelection,editorialItems);
+  assert.equal(result.ok,true);
+  const body=renderMorningSelection(editorialItems,result.relations,false);
+  assert(body.includes('業績予想の上方修正および期末配当予想の修正'));
+  assert(body.includes('ニレコ(6863)') && body.includes('エクシオHD(362A)') && body.includes('海帆(3133)'));
+  assert(body.includes('評価との一般的関係: 一般に、業績や損益の情報は、企業の収益力を評価するための材料です。'));
+  assert(!body.includes('想定され') && !body.includes('期待され'));
+});
+t('同じ会社の異なる開示をIDで区別し、AIの返却順によらず入力順位で表示', () => {
+  const rows=[{code:'1234',company:'同じ会社',title:'増配のお知らせ'},{code:'1234',company:'同じ会社',title:'業績予想の修正'}];
+  const response=JSON.stringify({items:[{id:'2',code:'1234',relation:'earnings'},{id:'1',code:'1234',relation:'shareholder'}]});
+  const result=validateMorningSelection(response,rows);
+  assert.equal(result.ok,true);
+  const body=renderMorningSelection(rows,result.relations,false);
+  assert(body.indexOf('増配のお知らせ')<body.indexOf('業績予想の修正'));
+});
+t('新プロンプトは市況データを含めず、分類用の形式と事実限定の指示を渡す', () => {
+  const prompt=buildMorningPrompt(editorialItems);
+  assert(prompt.includes('解説の自由記述は行わない'));
+  assert(prompt.includes('市況の総括') && prompt.includes('予想は禁止'));
+  assert(prompt.includes('ニレコ') && prompt.includes('allowedRelations'));
+  assert(!prompt.includes('S&P500') && !prompt.includes('マーケット面のような文体'));
+});
+t('予想を含む生成結果は1回で棄却し、再生成せず、成功キャッシュへ保存しない', () => {
+  const c=aiContext([[200,editorialResponse('慎重な立ち上がりが想定されます。')]]);
+  const body=c.context.generateMorningCommentary(editorialItems,new Date('2026-11-13T08:30:00+09:00'));
+  assert(body.includes('開示一覧') && body.includes('ニレコ(6863)'));
+  assert(!body.includes('想定され'));
+  assert.equal(c.requests.length,1); assert.equal(c.cache.size,0);
+  assert.equal(c.context.geminiUsageStatus().byPurpose.morning,1);
+  assert(c.logs.some(line=>line.includes('rejected response by editorial check')));
+});
+t('有効な分類はキャッシュを再利用し、朝刊本文と台帳の呼び出し数を維持', () => {
+  const c=aiContext([[200,editorialResponse(approvedSelection)]]);
+  const now=new Date('2026-11-13T08:30:00+09:00');
+  const body=c.context.generateMorningCommentary(editorialItems,now);
+  assert(!body.includes('開示一覧'));
+  assert.equal(c.context.generateMorningCommentary(editorialItems,now),body);
+  assert.equal(c.requests.length,1); assert.equal(c.context.geminiUsageStatus().used,1);
+});
+t('不適合キャッシュも掲載せず、キャッシュ棄却のための追加生成もしない', () => {
+  const c=aiContext([]);
+  c.context.CacheService.getScriptCache=()=>({get:()=> '市場は上昇が期待されます。',put:()=>{throw new Error('must not cache');}});
+  const body=c.context.generateMorningCommentary(editorialItems,new Date('2026-11-13T08:30:00+09:00'));
+  assert(body.includes('開示一覧') && !body.includes('上昇が期待'));
+  assert.equal(c.requests.length,0);
+  assert.equal(c.context.geminiUsageStatus().used,0);
+});
+t('旧方針の成功キャッシュは名前空間で分離し、同じ開示でも再利用しない', () => {
+  const c=aiContext([[200,editorialResponse(approvedSelection)]]);
+  const oldId='2026-11-13:'+editorialItems.map(it=>it.id).join('|');
+  const oldKey=c.context.geminiCacheKey('morning',oldId);
+  c.cache.set(oldKey,{text:'慎重な立ち上がりが想定される。',until:Infinity});
+  const body=c.context.generateMorningCommentary(editorialItems,new Date('2026-11-13T08:30:00+09:00'));
+  assert(!body.includes('想定され') && !body.includes('開示一覧'));
+  assert.equal(c.requests.length,1);
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);

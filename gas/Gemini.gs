@@ -127,13 +127,17 @@ function readGeminiCache(purpose, cacheId) {
   } catch (e) { return null; }
 }
 
-function requestGemini(payload, purpose, cacheId) {
+function requestGemini(payload, purpose, cacheId, validateText) {
   purpose = ['morning', 'pdf', 'intraday', 'diagnostic'].includes(purpose) ? purpose : 'intraday';
   const props = PropertiesService.getScriptProperties();
   const key = (props.getProperty('GEMINI_API_KEY') || '').trim();
   if (!key) { Logger.log('Gemini: GEMINI_API_KEY 未設定'); return null; }
   const cached = readGeminiCache(purpose, cacheId);
-  if (cached) return cached;
+  if (cached) {
+    if (!validateText || validateText(cached)) return cached;
+    Logger.log(`Gemini purpose=${purpose} rejected cached response by editorial check`);
+    return null; // キャッシュ棄却でも追加の生成はしない
+  }
   const model = geminiModel();
   const redact = value => String(value).split(key).join('[REDACTED]');
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
@@ -162,6 +166,10 @@ function requestGemini(payload, purpose, cacheId) {
           const text = candidate && candidate.content && (candidate.content.parts || [])
             .filter(part => !part.thought && typeof part.text === 'string').map(part => part.text).join('\n').trim();
           if (text && (!candidate.finishReason || candidate.finishReason === 'STOP')) {
+            if (validateText && !validateText(text)) {
+              Logger.log(`Gemini purpose=${purpose} HTTP 200 rejected response by editorial check`);
+              return null; // 不適合本文をキャッシュせず、再生成もしない
+            }
             try {
               const cacheKey = geminiCacheKey(purpose, cacheId);
               if (cacheKey) CacheService.getScriptCache().put(cacheKey, text, CONFIG.GEMINI_CACHE_SECONDS);
